@@ -1,0 +1,58 @@
+import { Router } from 'express';
+import { protect } from '../middlewares/authMiddleware.js';
+import { requireRole, requireRoles } from '../middlewares/roleMiddleware.js';
+import {
+    getUsers,
+    getUserById,
+    createUser,
+    updateUser,
+    deleteUser,
+    getUserSettings,
+    updateUserSettings,
+    getAddresses,
+    addAddress,
+    updateAddress,
+    deleteAddress,
+    setDefaultAddress,
+    deactivateUser,
+    reactivateUser,
+    getCustomerAnalytics,
+    sendEmailToCustomer,
+    getCustomerProfile
+} from '../controllers/userController.js';
+
+const router = Router();
+
+// Only superadmin can create/update/delete admins, but admin/superadmin can manage users
+router.route('/')
+    .get(protect, requireRoles(['admin', 'superadmin']), getUsers)
+    .post(protect, requireRole('superadmin'), createUser);
+
+router.route('/:id')
+    .get(protect, requireRoles(['admin', 'superadmin']), getUserById)
+    .put(protect, requireRole('superadmin'), updateUser)
+    .delete(protect, requireRole('superadmin'), deleteUser);
+
+router.route('/:id/deactivate').patch(protect, requireRole('superadmin'), deactivateUser);
+router.route('/:id/reactivate').patch(protect, requireRole('superadmin'), reactivateUser);
+
+router.route('/settings')
+    .get(protect, getUserSettings)
+    .put(protect, updateUserSettings);
+
+router.route('/addresses')
+    .get(protect, getAddresses)
+    .post(protect, addAddress);
+
+router.route('/addresses/:addressId')
+    .put(protect, updateAddress)
+    .delete(protect, deleteAddress);
+
+router.route('/addresses/:addressId/default')
+    .put(protect, setDefaultAddress);
+
+router.get('/customers/analytics', protect, requireRoles(['admin', 'superadmin']), getCustomerAnalytics);
+router.post('/customers/send-email', protect, requireRoles(['admin', 'superadmin']), sendEmailToCustomer);
+router.get('/customers/:id/profile', protect, requireRoles(['admin', 'superadmin']), getCustomerProfile);
+
+export default router; 

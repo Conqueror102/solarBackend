@@ -1,0 +1,11 @@
+import express from 'express';
+import { getDashboardData, getAnalyticsOverview, getSalesPerformance, getTopProducts, getCustomReport } from '../controllers/dashboardController.js';
+import { protect } from '../middlewares/authMiddleware.js';
+import { requireRoles } from '../middlewares/roleMiddleware.js';
+const router = express.Router();
+router.get('/', protect, requireRoles(['admin', 'superadmin']), getDashboardData);
+router.get('/analytics/overview', protect, requireRoles(['admin', 'superadmin']), getAnalyticsOverview);
+router.get('/sales-performance', protect, requireRoles(['admin', 'superadmin']), getSalesPerformance);
+router.get('/top-products', protect, requireRoles(['admin', 'superadmin']), getTopProducts);
+router.post('/custom-report', protect, requireRoles(['admin', 'superadmin']), getCustomReport);
+export default router;
