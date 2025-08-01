@@ -23,7 +23,30 @@ const orderSchema = new Schema({
     isPaid: { type: Boolean, required: true, default: false },
     paidAt: { type: Date },
     paymentMethod: { type: String, required: true },
-    status: { type: String, required: true, default: 'pending' },
+    paymentStatus: {
+        type: String,
+        required: true,
+        default: 'Pending',
+        enum: [
+            'Pending', // Initial payment state
+            'Processing', // Payment is being processed
+            'Completed', // Payment successful
+            'Failed', // Payment failed
+            'Refunded' // Payment was refunded
+        ]
+    },
+    status: {
+        type: String,
+        required: true,
+        default: 'New',
+        enum: [
+            'New', // Fresh order
+            'Processing', // Order is being processed
+            'Shipped', // Order has been shipped
+            'Delivered', // Order has been delivered
+            'Cancelled' // Order was cancelled
+        ]
+    },
     shippingAddress: { type: addressSchema, required: true },
     billingAddress: { type: addressSchema, required: true },
 }, { timestamps: true });

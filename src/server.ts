@@ -24,9 +24,11 @@ import settingsRoutes from './routes/settingsRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import { swaggerUi, swaggerDocs } from './utils/swagger.js';
 import { fileURLToPath } from 'url';
 import { startDailySalesReportCron } from './cron/dailySalesReport.js';
+import { startNotificationCleanupCron } from './cron/notificationCleanup.js';
 
 // Load environment variables
 dotenv.config();
@@ -98,9 +100,10 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/categories', categoryRoutes);
-app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -112,8 +115,9 @@ app.get('/healthz', (req, res) => res.status(200).send('OK'));
 app.use(notFound);
 app.use(errorHandler);
 
-// Start daily sales report cron job
+// Start cron jobs
 startDailySalesReportCron();
+startNotificationCleanupCron();
 
 // Server listening
 const PORT = process.env.PORT || 5000;

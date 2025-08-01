@@ -7,11 +7,11 @@
 import asyncHandler from 'express-async-handler';
 import { Request, Response } from 'express';
 import { Product } from '../models/Product.js';
-import cloudinary from '../config/cloudinary.js';
-import fs from 'fs';
 import { User } from '../models/User.js';
 import { sendLowStockEmail } from '../utils/email.js';
 import { createProductSchema, updateProductSchema } from '../validators/product.js';
+import uploadToCloudinary from '../utils/cloudinaryUpload.js';
+import { notifyProductAdded, notifyProductUpdated, notifyLowStockAlert, notifyOutOfStockAlert } from '../utils/adminNotificationService.js';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
@@ -37,25 +37,27 @@ const createProduct = asyncHandler(async (req: Request, res: Response) => {
         res.status(400);
         throw new Error(error.details[0].message);
     }
+    
     const { name, description, price, category, stock } = req.body;
     let images: string[] = [];
+    
     if ((req as any).files && Array.isArray((req as any).files)) {
         for (const file of (req as any).files) {
             if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-                fs.unlinkSync(file.path);
                 res.status(400);
                 throw new Error('Invalid file type. Only JPEG, PNG, and WEBP are allowed.');
             }
             if (file.size > MAX_IMAGE_SIZE) {
-                fs.unlinkSync(file.path);
                 res.status(400);
                 throw new Error('File too large. Max size is 2MB.');
             }
-            const result = await cloudinary.uploader.upload(file.path);
-            fs.unlinkSync(file.path);
+            
+            // Use utility to upload to Cloudinary
+            const result = await uploadToCloudinary(file.buffer, file.mimetype);
             images.push(result.secure_url);
         }
     }
+    
     const product = await Product.create({
         name,
         description,
@@ -64,6 +66,15 @@ const createProduct = asyncHandler(async (req: Request, res: Response) => {
         stock,
         images,
     });
+    
+    // Notify admins about new product
+    const creator = (req as any).user;
+    await notifyProductAdded(
+        product._id.toString(),
+        product.name,
+        creator?.name || 'System'
+    );
+    
     res.status(201).json(product);
 });
 
@@ -85,22 +96,59 @@ const updateProduct = asyncHandler(async (req: Request, res: Response) => {
             let images: string[] = [];
             for (const file of (req as any).files) {
                 if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-                    fs.unlinkSync(file.path);
                     res.status(400);
                     throw new Error('Invalid file type. Only JPEG, PNG, and WEBP are allowed.');
                 }
                 if (file.size > MAX_IMAGE_SIZE) {
-                    fs.unlinkSync(file.path);
                     res.status(400);
                     throw new Error('File too large. Max size is 2MB.');
                 }
-                const result = await cloudinary.uploader.upload(file.path);
-                fs.unlinkSync(file.path);
+                // Use utility to upload to Cloudinary
+                const result = await uploadToCloudinary(file.buffer, file.mimetype);
                 images.push(result.secure_url);
             }
             product.images = images;
         }
+        
+        // Track changes for admin notification
+        const changes: string[] = [];
+        if (name && name !== product.name) changes.push('name');
+        if (description && description !== product.description) changes.push('description');
+        if (price && price !== product.price) changes.push('price');
+        if (category && category !== product.category) changes.push('category');
+        if (stock !== undefined && stock !== product.stock) changes.push('stock');
+        if ((req as any).files && Array.isArray((req as any).files) && (req as any).files.length > 0) {
+            changes.push('images');
+        }
+        
         const updatedProduct = await product.save();
+        
+        // Notify admins about product update
+        if (changes.length > 0) {
+            const updater = (req as any).user;
+            await notifyProductUpdated(
+                updatedProduct._id.toString(),
+                updatedProduct.name,
+                updater?.name || 'System',
+                changes
+            );
+        }
+        
+        // Check for low stock alerts
+        if (updatedProduct.stock <= 5 && updatedProduct.stock > 0) {
+            await notifyLowStockAlert(
+                updatedProduct._id.toString(),
+                updatedProduct.name,
+                updatedProduct.stock,
+                5
+            );
+        } else if (updatedProduct.stock === 0) {
+            await notifyOutOfStockAlert(
+                updatedProduct._id.toString(),
+                updatedProduct.name
+            );
+        }
+        
         res.json(updatedProduct);
     } else {
         res.status(404);
@@ -174,7 +222,7 @@ const bulkUpdateStock = asyncHandler(async (req: Request, res: Response) => {
     }
     // Notify admins if any product is low in stock
     if (lowStockProducts.length > 0) {
-        const admins = await User.find({ isAdmin: true });
+        const admins = await User.find({ role: { $in: ['admin', 'superadmin'] } });
         const adminEmails = admins.map(a => a.email);
         await sendLowStockEmail(adminEmails, lowStockProducts);
     }

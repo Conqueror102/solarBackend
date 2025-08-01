@@ -4,6 +4,9 @@
  * ----------------------------------------
  * Configures the Cloudinary SDK for uploading and managing media files.
  */
+
+import dotenv from 'dotenv';
+dotenv.config();
 import { v2 as cloudinary } from 'cloudinary';
 
 cloudinary.config({

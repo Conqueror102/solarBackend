@@ -7,66 +7,42 @@
 import asyncHandler from 'express-async-handler';
 import { Request, Response } from 'express';
 import { User } from '../models/User.js';
-import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { sendCustomEmail } from '../utils/email.js';
 import { registerSchema, loginSchema } from '../validators/auth.js';
-
-// Generate JWT Token
-const generateToken = (id: string) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET as string, { expiresIn: '30d' });
-};
+import generateToken from '../utils/generateToken.js';
 
 const registerUser = asyncHandler(async (req: Request, res: Response) => {
     const { error } = registerSchema.validate(req.body);
     if (error) {
-      res.status(400);
-      throw new Error(error.details[0].message);
+        res.status(400);
+        throw new Error(error.details[0].message);
     }
-  
     const { name, email, password, role } = req.body;
-  
+    if (role && role !== 'user') {
+        res.status(403);
+        throw new Error('You cannot register as admin or superadmin');
+    }
     const userExists = await User.findOne({ email });
     if (userExists) {
-      res.status(400);
-      throw new Error('User already exists');
+        res.status(400);
+        throw new Error('User already exists');
     }
-  
     // Generate email verification token
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
-  
-    // Create user
-    const user = await User.create({
-      name,
-      email,
-      password,
-      role: role || 'user',
-      emailVerificationToken,
-      emailVerified: false,
-    });
-  
-    // Prepare verification email
+    const user = await User.create({ name, email, password, role: 'user', emailVerificationToken, emailVerified: false });
+    // Send verification email
     const verifyUrl = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
     const html = `<p>Welcome! Please <a href="${verifyUrl}">verify your email</a> to activate your account.</p>`;
-  
-    try {
-      // Attempt to send verification email
-      await sendCustomEmail(email, 'Verify Your Email', html);
-    } catch (err) {
-      // If email fails, rollback user
-      await User.findByIdAndDelete(user._id);
-      throw new Error('Failed to send verification email. Please try again later.');
-    }
-  
-    // Success response
+    await sendCustomEmail(email, 'Verify Your Email', html);
     res.status(201).json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      message: 'Registration successful. Please check your email to verify your account.',
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        message: 'Registration successful. Please check your email to verify your account.'
     });
-  });
+});
   
 
 const loginUser = asyncHandler(async (req: Request, res: Response) => {

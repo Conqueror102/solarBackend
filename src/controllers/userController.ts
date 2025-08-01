@@ -4,6 +4,7 @@ import { User } from '../models/User.js';
 import { Order } from '../models/Order.js';
 import { sendCustomEmail } from '../utils/email.js';
 import { createUserSchema, updateUserSchema } from '../validators/user.js';
+import { notifyNewUserRegistration, notifyUserActivity } from '../utils/adminNotificationService.js';
 
 const getUsers = asyncHandler(async (req: Request, res: Response) => {
     const users = await User.find({}).select('-password');
@@ -40,6 +41,14 @@ const createUser = asyncHandler(async (req: Request, res: Response) => {
         throw new Error('Only superadmin can create admin or superadmin users');
     }
     const user = await User.create({ name, email, password, role: newRole });
+    
+    // Notify admins about new user registration
+    await notifyNewUserRegistration(
+        user._id.toString(),
+        user.name,
+        user.email
+    );
+    
     res.status(201).json({
         _id: user._id,
         name: user.name,

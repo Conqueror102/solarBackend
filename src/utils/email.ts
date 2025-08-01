@@ -18,15 +18,23 @@ interface OrderInfo {
     _id: string;
     totalAmount: number;
     status: string;
+    paymentStatus?: string;
 }
 
-const statusMessages: Record<string, string> = {
-    'Pending': 'Your order has been received and is pending processing.',
+const orderStatusMessages: Record<string, string> = {
+    'New': 'Your order has been received.',
     'Processing': 'Your order is currently being processed.',
     'Shipped': 'Good news! Your order has been shipped.',
     'Delivered': 'Your order has been delivered. Thank you for shopping with us!',
-    'Cancelled': 'Your order has been cancelled. If you have questions, please contact support.',
-    // Add more statuses as needed
+    'Cancelled': 'Your order has been cancelled. If you have questions, please contact support.'
+};
+
+const paymentStatusMessages: Record<string, string> = {
+    'Pending': 'Your payment is pending.',
+    'Processing': 'Your payment is being processed.',
+    'Completed': 'Your payment has been successfully completed.',
+    'Failed': 'Your payment attempt failed. Please try again.',
+    'Refunded': 'Your payment has been refunded.'
 };
 
 async function sendMail(to: string, subject: string, html: string) {
@@ -50,7 +58,7 @@ export async function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
 }
 
 export async function sendOrderStatusUpdateEmail(user: UserInfo, order: OrderInfo) {
-    const statusMsg = statusMessages[order.status] || `Your order status is now: ${order.status}`;
+    const statusMsg = orderStatusMessages[order.status] || `Your order status is now: ${order.status}`;
     const html = `
         <h2>Order Status Update</h2>
         <p>Order <b>#${order._id.slice(-5)}</b> is now <b>${order.status}</b>.</p>

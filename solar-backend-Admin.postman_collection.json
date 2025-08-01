@@ -1,0 +1,209 @@
+{
+  "info": {
+    "_postman_id": "solar-backend-user-collection",
+    "name": "Solar Backend API - User Endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "User - Get All",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users"] }
+      }
+    },
+    {
+      "name": "User - Get By ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/<user_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "<user_id>"] }
+      }
+    },
+    {
+      "name": "User - Create (Admin/Superadmin)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"New User\",\n  \"email\": \"newuser@example.com\",\n  \"password\": \"password123\",\n  \"role\": \"user\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/users", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users"] }
+      }
+    },
+    {
+      "name": "User - Update (Admin/Superadmin)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Updated Name\",\n  \"email\": \"updated@example.com\",\n  \"role\": \"admin\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/users/<user_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "<user_id>"] }
+      }
+    },
+    {
+      "name": "User - Delete (Admin/Superadmin)",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/<user_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "<user_id>"] }
+      }
+    },
+    {
+      "name": "User - Deactivate",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/<user_id>/deactivate", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "<user_id>", "deactivate"] }
+      }
+    },
+    {
+      "name": "User - Reactivate",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/<user_id>/reactivate", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "<user_id>", "reactivate"] }
+      }
+    },
+    {
+      "name": "User - Get Own Settings",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/settings", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "settings"] }
+      }
+    },
+    {
+      "name": "User - Update Own Settings",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"preferences\": {\n    \"currency\": \"USD\"\n  }\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/users/settings", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "settings"] }
+      }
+    },
+    {
+      "name": "User - Get Addresses",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/addresses", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "addresses"] }
+      }
+    },
+    {
+      "name": "User - Add Address",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"street\": \"123 Main St\",\n  \"city\": \"Metropolis\",\n  \"state\": \"NY\",\n  \"postalCode\": \"10001\",\n  \"country\": \"USA\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/users/addresses", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "addresses"] }
+      }
+    },
+    {
+      "name": "User - Update Address",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"city\": \"Gotham\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/users/addresses/<address_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "addresses", "<address_id>"] }
+      }
+    },
+    {
+      "name": "User - Delete Address",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/addresses/<address_id>", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "addresses", "<address_id>"] }
+      }
+    },
+    {
+      "name": "User - Set Default Address",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/addresses/<address_id>/default", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "addresses", "<address_id>", "default"] }
+      }
+    },
+    {
+      "name": "User - Get Customer Analytics",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/customers/analytics", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "customers", "analytics"] }
+      }
+    },
+    {
+      "name": "User - Send Email to Customer",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"to\": \"customer@example.com\",\n  \"subject\": \"Hello\",\n  \"html\": \"<p>Hi there!</p>\"\n}"
+        },
+        "url": { "raw": "http://localhost:5000/api/users/customers/send-email", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "customers", "send-email"] }
+      }
+    },
+    {
+      "name": "User - Get Customer Profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": { "raw": "http://localhost:5000/api/users/customers/<user_id>/profile", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "customers", "<user_id>", "profile"] }
+      }
+    }
+  ]
+} 

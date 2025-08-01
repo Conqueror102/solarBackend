@@ -5,11 +5,10 @@
  */
 import asyncHandler from 'express-async-handler';
 import { Product } from '../models/Product.js';
-import cloudinary from '../config/cloudinary.js';
-import fs from 'fs';
 import { User } from '../models/User.js';
 import { sendLowStockEmail } from '../utils/email.js';
 import { createProductSchema, updateProductSchema } from '../validators/product.js';
+import uploadToCloudinary from '../utils/cloudinaryUpload.js';
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
 const getProducts = asyncHandler(async (req, res) => {
@@ -37,17 +36,15 @@ const createProduct = asyncHandler(async (req, res) => {
     if (req.files && Array.isArray(req.files)) {
         for (const file of req.files) {
             if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-                fs.unlinkSync(file.path);
                 res.status(400);
                 throw new Error('Invalid file type. Only JPEG, PNG, and WEBP are allowed.');
             }
             if (file.size > MAX_IMAGE_SIZE) {
-                fs.unlinkSync(file.path);
                 res.status(400);
                 throw new Error('File too large. Max size is 2MB.');
             }
-            const result = await cloudinary.uploader.upload(file.path);
-            fs.unlinkSync(file.path);
+            // Use utility to upload to Cloudinary
+            const result = await uploadToCloudinary(file.buffer, file.mimetype);
             images.push(result.secure_url);
         }
     }
@@ -79,17 +76,15 @@ const updateProduct = asyncHandler(async (req, res) => {
             let images = [];
             for (const file of req.files) {
                 if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-                    fs.unlinkSync(file.path);
                     res.status(400);
                     throw new Error('Invalid file type. Only JPEG, PNG, and WEBP are allowed.');
                 }
                 if (file.size > MAX_IMAGE_SIZE) {
-                    fs.unlinkSync(file.path);
                     res.status(400);
                     throw new Error('File too large. Max size is 2MB.');
                 }
-                const result = await cloudinary.uploader.upload(file.path);
-                fs.unlinkSync(file.path);
+                // Use utility to upload to Cloudinary
+                const result = await uploadToCloudinary(file.buffer, file.mimetype);
                 images.push(result.secure_url);
             }
             product.images = images;
@@ -168,7 +163,7 @@ const bulkUpdateStock = asyncHandler(async (req, res) => {
     }
     // Notify admins if any product is low in stock
     if (lowStockProducts.length > 0) {
-        const admins = await User.find({ isAdmin: true });
+        const admins = await User.find({ role: { $in: ['admin', 'superadmin'] } });
         const adminEmails = admins.map(a => a.email);
         await sendLowStockEmail(adminEmails, lowStockProducts);
     }

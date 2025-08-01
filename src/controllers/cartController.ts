@@ -74,9 +74,20 @@ const updateCartItem = asyncHandler(async (req: Request, res: Response) => {
         res.status(404);
         throw new Error('Product not in cart');
     }
+    // Check product stock
+    const product = await Product.findById(productId);
+    if (!product) {
+        res.status(404);
+        throw new Error('Product not found');
+    }
+    if (quantity > product.stock) {
+        res.status(400);
+        throw new Error(`Cannot set quantity above available stock (${product.stock})`);
+    }
     item.quantity = quantity;
     await cart.save();
-    res.json(cart);
+    res.json(cart)
+   
 });
 
 const clearCart = asyncHandler(async (req: Request, res: Response) => {

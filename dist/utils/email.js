@@ -7,13 +7,19 @@ const transporter = nodemailer.createTransport({
         pass: "xvqqzlwiaadvihbd",
     },
 });
-const statusMessages = {
-    'Pending': 'Your order has been received and is pending processing.',
+const orderStatusMessages = {
+    'New': 'Your order has been received.',
     'Processing': 'Your order is currently being processed.',
     'Shipped': 'Good news! Your order has been shipped.',
     'Delivered': 'Your order has been delivered. Thank you for shopping with us!',
-    'Cancelled': 'Your order has been cancelled. If you have questions, please contact support.',
-    // Add more statuses as needed
+    'Cancelled': 'Your order has been cancelled. If you have questions, please contact support.'
+};
+const paymentStatusMessages = {
+    'Pending': 'Your payment is pending.',
+    'Processing': 'Your payment is being processed.',
+    'Completed': 'Your payment has been successfully completed.',
+    'Failed': 'Your payment attempt failed. Please try again.',
+    'Refunded': 'Your payment has been refunded.'
 };
 async function sendMail(to, subject, html) {
     const mailOptions = {
@@ -34,7 +40,7 @@ export async function sendOrderPlacedEmail(user, order) {
     await sendMail(user.email, 'Order Confirmation', html);
 }
 export async function sendOrderStatusUpdateEmail(user, order) {
-    const statusMsg = statusMessages[order.status] || `Your order status is now: ${order.status}`;
+    const statusMsg = orderStatusMessages[order.status] || `Your order status is now: ${order.status}`;
     const html = `
         <h2>Order Status Update</h2>
         <p>Order <b>#${order._id.slice(-5)}</b> is now <b>${order.status}</b>.</p>

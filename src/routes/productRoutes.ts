@@ -1,22 +1,11 @@
 
 import { Router } from 'express';
-import multer from 'multer';
+import upload from '../utils/multer.js';
 import { protect } from '../middlewares/authMiddleware.js';
 import { requireRoles } from '../middlewares/roleMiddleware.js';
 import { getProducts, getProductById, createProduct, updateProduct, deleteProduct, getTopSellingProducts, getLowStockProducts, bulkDeleteProducts, bulkUpdateProducts, bulkUpdateStock } from '../controllers/productController.js';
 
 const router = Router();
-
-// Configure Multer for file upload
-const storage = multer.diskStorage({
-    destination(_req, _file, cb) {
-        cb(null, 'uploads/');
-    },
-    filename(_req, file, cb) {
-        cb(null, `${Date.now()}-${file.originalname}`);
-    }
-});
-const upload = multer({ storage });
 
 router.route('/')
     .get(getProducts)
