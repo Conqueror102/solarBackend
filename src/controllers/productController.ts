@@ -6,6 +6,7 @@
  */
 import asyncHandler from 'express-async-handler';
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
 import { User } from '../models/User.js';
 import { sendLowStockEmail } from '../utils/email.js';
@@ -32,13 +33,22 @@ const getProductById = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const createProduct = asyncHandler(async (req: Request, res: Response) => {
-    const { error } = createProductSchema.validate(req.body);
+    // For multipart/form-data, fields are in req.body as strings
+    const productData = {
+        name: req.body.name,
+        description: req.body.description,
+        price: req.body.price ? parseFloat(req.body.price) : undefined,
+        category: req.body.category,
+        stock: req.body.stock ? parseInt(req.body.stock) : 0
+    };
+    
+    const { error } = createProductSchema.validate(productData);
     if (error) {
         res.status(400);
         throw new Error(error.details[0].message);
     }
     
-    const { name, description, price, category, stock } = req.body;
+    const { name, description, price, category, stock } = productData;
     let images: string[] = [];
     
     if ((req as any).files && Array.isArray((req as any).files)) {
@@ -62,7 +72,7 @@ const createProduct = asyncHandler(async (req: Request, res: Response) => {
         name,
         description,
         price,
-        category,
+        category: new mongoose.Types.ObjectId(category),
         stock,
         images,
     });
@@ -79,19 +89,28 @@ const createProduct = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const updateProduct = asyncHandler(async (req: Request, res: Response) => {
-    const { error } = updateProductSchema.validate(req.body);
+    // For multipart/form-data, fields are in req.body as strings
+    const productData = {
+        name: req.body.name,
+        description: req.body.description,
+        price: req.body.price ? parseFloat(req.body.price) : undefined,
+        category: req.body.category,
+        stock: req.body.stock ? parseInt(req.body.stock) : undefined
+    };
+    
+    const { error } = updateProductSchema.validate(productData);
     if (error) {
         res.status(400);
         throw new Error(error.details[0].message);
     }
-    const { name, description, price, category, stock } = req.body;
+    const { name, description, price, category, stock } = productData;
     const product = await Product.findById(req.params.id);
     if (product) {
         product.name = name || product.name;
         product.description = description || product.description;
         product.price = price || product.price;
-        product.category = category || product.category;
-        product.stock = stock || product.stock;
+        product.category = category ? new mongoose.Types.ObjectId(category) : product.category;
+        product.stock = stock !== undefined ? stock : product.stock;
         if ((req as any).files && Array.isArray((req as any).files) && (req as any).files.length > 0) {
             let images: string[] = [];
             for (const file of (req as any).files) {

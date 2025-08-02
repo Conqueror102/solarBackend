@@ -4,7 +4,7 @@ export const createProductSchema = Joi.object({
     description: Joi.string().max(1000).required(),
     price: Joi.number().min(0).required(),
     images: Joi.array().items(Joi.string().uri()).optional(),
-    category: Joi.string().required(),
+    category: Joi.string().hex().length(24).required(), // MongoDB ObjectId validation
     stock: Joi.number().min(0).default(0)
 });
 export const updateProductSchema = Joi.object({
@@ -12,6 +12,6 @@ export const updateProductSchema = Joi.object({
     description: Joi.string().max(1000).optional(),
     price: Joi.number().min(0).optional(),
     images: Joi.array().items(Joi.string().uri()).optional(),
-    category: Joi.string().optional(),
+    category: Joi.string().hex().length(24).optional(), // MongoDB ObjectId validation
     stock: Joi.number().min(0).optional()
 });
