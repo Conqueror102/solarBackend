@@ -14,6 +14,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 import connectDB from './config/db.js';
 import { notFound, errorHandler } from './middlewares/errorMiddleware.js';
 import authRoutes from './routes/authRoutes.js';
@@ -71,6 +72,9 @@ if (!fs.existsSync(logDirectory)) {
 // Middleware: parse JSON and form data
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Middleware: parse cookies
+app.use(cookieParser());
 
 // Middleware: security headers
 app.use(helmet());
