@@ -9,6 +9,7 @@ import { User } from '../models/User.js';
 import { sendLowStockEmail } from '../utils/email.js';
 import { createProductSchema, updateProductSchema } from '../validators/product.js';
 import uploadToCloudinary from '../utils/cloudinaryUpload.js';
+import { notifyProductAdded, notifyProductUpdated, notifyLowStockAlert, notifyOutOfStockAlert } from '../utils/adminNotificationService.js';
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
 const getProducts = asyncHandler(async (req, res) => {
@@ -56,6 +57,9 @@ const createProduct = asyncHandler(async (req, res) => {
         stock,
         images,
     });
+    // Notify admins about new product
+    const creator = req.user;
+    await notifyProductAdded(product._id.toString(), product.name, creator?.name || 'System');
     res.status(201).json(product);
 });
 const updateProduct = asyncHandler(async (req, res) => {
@@ -89,7 +93,34 @@ const updateProduct = asyncHandler(async (req, res) => {
             }
             product.images = images;
         }
+        // Track changes for admin notification
+        const changes = [];
+        if (name && name !== product.name)
+            changes.push('name');
+        if (description && description !== product.description)
+            changes.push('description');
+        if (price && price !== product.price)
+            changes.push('price');
+        if (category && category !== product.category)
+            changes.push('category');
+        if (stock !== undefined && stock !== product.stock)
+            changes.push('stock');
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+            changes.push('images');
+        }
         const updatedProduct = await product.save();
+        // Notify admins about product update
+        if (changes.length > 0) {
+            const updater = req.user;
+            await notifyProductUpdated(updatedProduct._id.toString(), updatedProduct.name, updater?.name || 'System', changes);
+        }
+        // Check for low stock alerts
+        if (updatedProduct.stock <= 5 && updatedProduct.stock > 0) {
+            await notifyLowStockAlert(updatedProduct._id.toString(), updatedProduct.name, updatedProduct.stock, 5);
+        }
+        else if (updatedProduct.stock === 0) {
+            await notifyOutOfStockAlert(updatedProduct._id.toString(), updatedProduct.name);
+        }
         res.json(updatedProduct);
     }
     else {

@@ -8,10 +8,10 @@ import { Order } from '../models/Order.js';
 import Stripe from 'stripe';
 import { User } from '../models/User.js';
 import { sendOrderPlacedEmail, sendOrderStatusUpdateEmail } from '../utils/email.js';
-import { Settings } from '../models/Settings.js';
-import { sendCustomEmail } from '../utils/email.js';
 import { createOrderSchema } from '../validators/order.js';
 import mongoose from 'mongoose';
+import { createOrderStatusNotification } from '../utils/notificationService.js';
+import { notifyNewOrderPlaced, notifyOrderStatusChanged } from '../utils/adminNotificationService.js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2022-11-15' });
 const addOrder = asyncHandler(async (req, res) => {
     const { error } = createOrderSchema.validate(req.body);
@@ -62,13 +62,8 @@ const addOrder = asyncHandler(async (req, res) => {
                 await sendOrderPlacedEmail({ email: user.email, name: user.name }, { _id: createdOrder._id.toString(), totalAmount: createdOrder.totalAmount, status: createdOrder.status });
             }
             // Send new order notification to admins
-            const settings = await Settings.findOne();
-            const adminEmails = settings?.notificationEmails && settings.notificationEmails.length > 0
-                ? settings.notificationEmails
-                : (await User.find({ role: { $in: ['admin', 'superadmin'] } })).map(a => a.email);
-            if (adminEmails.length > 0) {
-                const html = `<h2>New Order Placed</h2><p>Order <b>#${createdOrder._id.toString().slice(-5)}</b> by ${user?.name || 'Customer'} for <b>$${createdOrder.totalAmount.toFixed(2)}</b>.</p>`;
-                await sendCustomEmail(adminEmails, 'New Order Notification', html);
+            if (user) {
+                await notifyNewOrderPlaced(createdOrder._id.toString(), createdOrder.totalAmount, user.name, user.email);
             }
             res.status(201).json(createdOrder);
         }
@@ -108,13 +103,8 @@ const addOrder = asyncHandler(async (req, res) => {
                 await sendOrderPlacedEmail({ email: user.email, name: user.name }, { _id: createdOrder._id.toString(), totalAmount: createdOrder.totalAmount, status: createdOrder.status });
             }
             // Send new order notification to admins
-            const settings = await Settings.findOne();
-            const adminEmails = settings?.notificationEmails && settings.notificationEmails.length > 0
-                ? settings.notificationEmails
-                : (await User.find({ role: { $in: ['admin', 'superadmin'] } })).map(a => a.email);
-            if (adminEmails.length > 0) {
-                const html = `<h2>New Order Placed</h2><p>Order <b>#${createdOrder._id.toString().slice(-5)}</b> by ${user?.name || 'Customer'} for <b>$${createdOrder.totalAmount.toFixed(2)}</b>.</p>`;
-                await sendCustomEmail(adminEmails, 'New Order Notification', html);
+            if (user) {
+                await notifyNewOrderPlaced(createdOrder._id.toString(), createdOrder.totalAmount, user.name, user.email);
             }
             res.status(201).json(createdOrder);
         }
@@ -287,6 +277,18 @@ const updateOrder = asyncHandler(async (req, res) => {
                 status: order.status,
                 paymentStatus: order.paymentStatus
             });
+            // Create notification for order status update
+            if (statusChanged && order.user) {
+                await createOrderStatusNotification(order.user.toString(), order._id.toString(), order.status, {
+                    paymentStatus: order.paymentStatus,
+                    totalAmount: order.totalAmount
+                });
+                // Notify admins about order status change
+                const user = await User.findById(order.user);
+                if (user) {
+                    await notifyOrderStatusChanged(order._id.toString(), req.body.status || order.status, order.status, order.totalAmount, user.name);
+                }
+            }
         }
         res.json(updatedOrder);
     }
@@ -321,6 +323,12 @@ const cancelOrder = asyncHandler(async (req, res) => {
     // Send cancellation email
     if (order.user && order.user.email) {
         await sendOrderStatusUpdateEmail({ email: order.user.email, name: order.user.name }, { _id: order._id.toString(), totalAmount: order.totalAmount, status: order.status });
+    }
+    // Create notification for order cancellation
+    if (order.user) {
+        await createOrderStatusNotification(order.user._id.toString(), order._id.toString(), 'cancelled', {
+            totalAmount: order.totalAmount
+        });
     }
     res.json(updatedOrder);
 });

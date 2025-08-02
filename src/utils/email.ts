@@ -1,13 +1,64 @@
 import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+dotenv.config();
 
-// Configure the transporter (use environment variables for sensitive info)
-const transporter = nodemailer.createTransport({
+// Email configuration with better error handling
+const createTransporter = () => {
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Gmail configuration with improved settings
+  const gmailConfig = {
     service: 'gmail',
     auth: {
-        user: "victorvector608@gmail.com",
-        pass: "xvqqzlwiaadvihbd",
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
     },
-});
+    // Connection settings to prevent timeouts
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    rateLimit: 14, // Gmail limit
+    // Timeout settings
+    connectionTimeout: 60000, // 60 seconds
+    greetingTimeout: 30000,   // 30 seconds
+    socketTimeout: 60000,     // 60 seconds
+    // TLS settings
+    secure: true,
+    tls: {
+      rejectUnauthorized: false
+    }
+  };
+
+  // Alternative: Custom SMTP configuration
+  const customSMTPConfig = {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    },
+    // Connection settings
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    // Timeout settings
+    connectionTimeout: 60000,
+    greetingTimeout: 30000,
+    socketTimeout: 60000,
+    // TLS settings
+    tls: {
+      rejectUnauthorized: false
+    }
+  };
+
+  // Use custom SMTP if host is specified, otherwise use Gmail
+  const config = process.env.SMTP_HOST ? customSMTPConfig : gmailConfig;
+  
+  return nodemailer.createTransport(config);
+};
+
+const transporter = createTransporter();
 
 interface UserInfo {
     email: string;
@@ -38,13 +89,34 @@ const paymentStatusMessages: Record<string, string> = {
 };
 
 async function sendMail(to: string, subject: string, html: string) {
-    const mailOptions = {
-        from: process.env.SMTP_USER, // Example with a fixed name
-        to,
-        subject,
-        html,
-    };
-    await transporter.sendMail(mailOptions);
+    try {
+        const mailOptions = {
+            from: `"Solar Store" <${process.env.SMTP_USER}>`,
+            to,
+            subject,
+            html,
+        };
+        
+        const result = await transporter.sendMail(mailOptions);
+        console.log(`Email sent successfully to ${to}: ${result.messageId}`);
+        return result;
+    } catch (error: any) {
+        console.error('Email sending failed:', {
+            to,
+            subject,
+            error: error.message,
+            code: error.code,
+            command: error.command
+        });
+        
+        // Don't throw error in production to prevent app crashes
+        if (process.env.NODE_ENV === 'production') {
+            console.error('Email failed but continuing...');
+            return null;
+        } else {
+            throw error;
+        }
+    }
 }
 
 export async function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
@@ -93,13 +165,35 @@ export async function sendDailySalesReportEmail(to: string[], html: string) {
     for (const email of to) {
         await sendMail(email, 'Daily Sales Report', html);
     }
-} 
+}
 
-transporter.verify((error, success) => {
-    if (error) {
-      console.error('SMTP connection error:', error);
-    } else {
-      console.log('SMTP connected successfully');
+// Verify SMTP connection with better error handling
+export const verifySMTPConnection = async (): Promise<boolean> => {
+    try {
+        await transporter.verify();
+        console.log('✅ SMTP connection verified successfully');
+        return true;
+    } catch (error: any) {
+        console.error('❌ SMTP connection failed:', {
+            message: error.message,
+            code: error.code,
+            command: error.command,
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: process.env.SMTP_PORT || '587',
+            user: process.env.SMTP_USER
+        });
+        
+        // Provide helpful troubleshooting tips
+        console.error('\n🔧 Troubleshooting tips:');
+        console.error('1. Check your SMTP credentials in .env file');
+        console.error('2. Ensure SMTP_USER and SMTP_PASS are correct');
+        console.error('3. For Gmail, use App Password instead of regular password');
+        console.error('4. Check if your email provider allows SMTP access');
+        console.error('5. Try different SMTP settings (port 587 vs 465)');
+        
+        return false;
     }
-  });
-  
+};
+
+// Initialize SMTP connection on startup
+verifySMTPConnection(); 
