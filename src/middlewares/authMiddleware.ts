@@ -14,18 +14,9 @@ interface AuthRequest extends Request {
 
 const protect = async (req: AuthRequest, res: Response, next: NextFunction) => {
     let token;
-    
-    // Check for token in cookies first (more secure)
-    if (req.cookies && req.cookies.jwt) {
-        token = req.cookies.jwt;
-    }
-    // Fallback to Authorization header for API clients
-    else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-        token = req.headers.authorization.split(' ')[1];
-    }
-    
-    if (token) {
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
         try {
+            token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string };
             req.user = await User.findById(decoded.id).select('-password');
             if (!req.user) {
@@ -38,9 +29,10 @@ const protect = async (req: AuthRequest, res: Response, next: NextFunction) => {
             res.status(401);
             next(new Error("Not authorized, token failed"));
         }
-    } else {
+    }
+    if (!token) {
         res.status(401);
-        next(new Error("Not authorized, no token"));
+        next(new Error("Not authorized, token failed"));
     }
 };
 

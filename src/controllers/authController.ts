@@ -62,24 +62,12 @@ const loginUser = asyncHandler(async (req: Request, res: Response) => {
         throw new Error('Please verify your email before logging in.');
     }
     if (user && (await user.matchPassword(password))) {
-        // Generate JWT token
-        const token = generateToken(user._id);
-        
-        // Set HTTP-only cookie with secure options
-        res.cookie('jwt', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Only HTTPS in production
-            sameSite: 'strict',
-            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-            path: '/'
-        });
-        
         res.json({
             _id: user._id,
             name: user.name,
             email: user.email,
             role: user.role,
-            message: 'Login successful'
+            token: generateToken(user._id),
         });
     } else {
         res.status(401);
@@ -103,13 +91,6 @@ const getUserProfile = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const logoutUser = asyncHandler(async (req: Request, res: Response) => {
-    // Clear the JWT cookie
-    res.clearCookie('jwt', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        path: '/'
-    });
     res.json({ message: 'Logged out successfully' });
 });
 

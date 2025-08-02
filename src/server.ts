@@ -14,7 +14,6 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import rateLimit from 'express-rate-limit';
-import cookieParser from 'cookie-parser';
 import connectDB from './config/db.js';
 import { notFound, errorHandler } from './middlewares/errorMiddleware.js';
 import authRoutes from './routes/authRoutes.js';
@@ -30,8 +29,6 @@ import { swaggerUi, swaggerDocs } from './utils/swagger.js';
 import { fileURLToPath } from 'url';
 import { startDailySalesReportCron } from './cron/dailySalesReport.js';
 import { startNotificationCleanupCron } from './cron/notificationCleanup.js';
-
-
 
 // Load environment variables
 dotenv.config();
@@ -59,19 +56,6 @@ if (missingEnv.length > 0) {
 // Initialize Express app
 const app: Application = express();
 
-
-// Middleware: enable CORS
-const corsOptions = {
-    origin: process.env.NODE_ENV === 'production' 
-      ? [process.env.FRONTEND_URL || 'https://your-frontend-domain.com'] 
-      : ['http://localhost:8080'],
-    credentials: true, 
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
-    exposedHeaders: ['Set-Cookie']
-  };
-  app.use(cors(corsOptions));
-  
 // Connect to MongoDB
 connectDB();
 
@@ -88,13 +72,11 @@ if (!fs.existsSync(logDirectory)) {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Middleware: parse cookies
-app.use(cookieParser());
-
 // Middleware: security headers
 app.use(helmet());
 
-
+// Middleware: enable CORS
+app.use(cors());
 
 // Middleware: logging (Morgan)
 const accessLogStream = fs.createWriteStream(path.join(logDirectory, 'access.log'), { flags: 'a' });
