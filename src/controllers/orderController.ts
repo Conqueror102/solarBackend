@@ -239,15 +239,29 @@ const payOrder = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const getOrders = asyncHandler(async (req: Request, res: Response) => {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const totalOrders = await Order.countDocuments({});
     const orders = await Order.find({})
-    .populate('user', 'name email')
-    .populate('orderItems.product', 'name image price');
-    res.json(orders.map((order: any) => ({
-        ...order.toObject(),
-        shippingAddress: order.shippingAddress,
-        billingAddress: order.billingAddress,
-        shortCode: '#' + order._id.toString().slice(-5)
-    })));
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('user', 'name email')
+        .populate('orderItems.product', 'name image price');
+
+    res.json({
+        orders: orders.map((order: any) => ({
+            ...order.toObject(),
+            shippingAddress: order.shippingAddress,
+            billingAddress: order.billingAddress,
+            shortCode: '#' + order._id.toString().slice(-5)
+        })),
+        page,
+        pages: Math.ceil(totalOrders / limit),
+        totalOrders
+    });
 });
 
 const getOrderById = asyncHandler(async (req: Request, res: Response) => {
@@ -419,16 +433,15 @@ const getAllOrders = asyncHandler(async (req: Request, res: Response) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('user', 'name email');
+        .populate('user', 'name email')
+        .populate('orderItems.product', 'name image price');
 
     res.json({
-        orders: orders.map(order => ({
-            id: order._id,
-            shortCode: '#' + order._id.toString().slice(-5),
-            customer: order.user,
-            date: order.get('createdAt'),
-            status: order.status,
-            total: order.totalAmount
+        orders: orders.map((order: any) => ({
+            ...order.toObject(),
+            shippingAddress: order.shippingAddress,
+            billingAddress: order.billingAddress,
+            shortCode: '#' + order._id.toString().slice(-5)
         })),
         page,
         pages: Math.ceil(totalOrders / limit),
