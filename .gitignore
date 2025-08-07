@@ -1,2 +1,4 @@
 node_modules
 .env
+
+/CUSTOMER_MANAGEMENT_ENDPOINTS.md

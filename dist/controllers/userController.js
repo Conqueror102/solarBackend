@@ -324,6 +324,72 @@ const sendEmailToCustomer = asyncHandler(async (req, res) => {
     await sendCustomEmail(to, subject, html);
     res.json({ message: 'Email(s) sent successfully' });
 });
+// Get all customers with pagination, search, and filtering
+const getAllCustomers = asyncHandler(async (req, res) => {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const search = req.query.search;
+    const status = req.query.status;
+    const skip = (page - 1) * limit;
+    // Build filter object
+    const filter = { role: 'user' };
+    if (search) {
+        filter.$or = [
+            { name: { $regex: search, $options: 'i' } },
+            { email: { $regex: search, $options: 'i' } }
+        ];
+    }
+    if (status === 'active') {
+        filter.isDeactivated = false;
+    }
+    else if (status === 'deactivated') {
+        filter.isDeactivated = true;
+    }
+    // Get customers with pagination
+    const customers = await User.find(filter)
+        .select('-password')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit);
+    // Get total count for pagination
+    const total = await User.countDocuments(filter);
+    // Get order statistics for each customer
+    const customersWithStats = await Promise.all(customers.map(async (customer) => {
+        const orders = await Order.find({ user: customer._id });
+        const totalOrders = orders.length;
+        const totalSpent = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+        const lastOrder = orders.length > 0 ? orders[0] : null;
+        // Generate initials from name
+        const initials = customer.name
+            .split(' ')
+            .map(word => word.charAt(0))
+            .join('')
+            .toUpperCase()
+            .slice(0, 2);
+        return {
+            _id: customer._id,
+            initials,
+            name: customer.name,
+            email: customer.email,
+            phone: customer.preferences?.phone || '',
+            joinedDate: customer.createdAt,
+            totalOrders,
+            totalSpent,
+            lastOrderDate: lastOrder?.createdAt || null,
+            status: customer.isDeactivated ? 'Deactivated' : 'Active',
+            isDeactivated: customer.isDeactivated
+        };
+    }));
+    res.json({
+        customers: customersWithStats,
+        pagination: {
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit)
+        }
+    });
+});
 const getCustomerProfile = asyncHandler(async (req, res) => {
     const user = await User.findById(req.params.id).select('-password');
     if (!user || user.role !== 'user') {
@@ -354,4 +420,4 @@ const getCustomerProfile = asyncHandler(async (req, res) => {
         recentOrders
     });
 });
-export { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile };
+export { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile, getAllCustomers };

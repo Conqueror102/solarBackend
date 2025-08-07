@@ -18,7 +18,8 @@ import {
     reactivateUser,
     getCustomerAnalytics,
     sendEmailToCustomer,
-    getCustomerProfile
+    getCustomerProfile,
+    getAllCustomers
 } from '../controllers/userController.js';
 
 const router = Router();
@@ -27,6 +28,12 @@ const router = Router();
 router.route('/')
     .get(protect, requireRoles(['admin', 'superadmin']), getUsers)
     .post(protect, requireRole('superadmin'), createUser);
+
+// Customer-specific routes must come BEFORE the /:id route to avoid conflicts
+router.get('/customers', protect, requireRoles(['admin', 'superadmin']), getAllCustomers);
+router.get('/customers/analytics', protect, requireRoles(['admin', 'superadmin']), getCustomerAnalytics);
+router.post('/customers/send-email', protect, requireRoles(['admin', 'superadmin']), sendEmailToCustomer);
+router.get('/customers/:id/profile', protect, requireRoles(['admin', 'superadmin']), getCustomerProfile);
 
 router.route('/:id')
     .get(protect, requireRoles(['admin', 'superadmin']), getUserById)
@@ -51,8 +58,4 @@ router.route('/addresses/:addressId')
 router.route('/addresses/:addressId/default')
     .put(protect, setDefaultAddress);
 
-router.get('/customers/analytics', protect, requireRoles(['admin', 'superadmin']), getCustomerAnalytics);
-router.post('/customers/send-email', protect, requireRoles(['admin', 'superadmin']), sendEmailToCustomer);
-router.get('/customers/:id/profile', protect, requireRoles(['admin', 'superadmin']), getCustomerProfile);
-
-export default router; 
+export default router;

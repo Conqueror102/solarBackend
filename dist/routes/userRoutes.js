@@ -1,12 +1,17 @@
 import { Router } from 'express';
 import { protect } from '../middlewares/authMiddleware.js';
 import { requireRole, requireRoles } from '../middlewares/roleMiddleware.js';
-import { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile } from '../controllers/userController.js';
+import { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile, getAllCustomers } from '../controllers/userController.js';
 const router = Router();
 // Only superadmin can create/update/delete admins, but admin/superadmin can manage users
 router.route('/')
     .get(protect, requireRoles(['admin', 'superadmin']), getUsers)
     .post(protect, requireRole('superadmin'), createUser);
+// Customer-specific routes must come BEFORE the /:id route to avoid conflicts
+router.get('/customers', protect, requireRoles(['admin', 'superadmin']), getAllCustomers);
+router.get('/customers/analytics', protect, requireRoles(['admin', 'superadmin']), getCustomerAnalytics);
+router.post('/customers/send-email', protect, requireRoles(['admin', 'superadmin']), sendEmailToCustomer);
+router.get('/customers/:id/profile', protect, requireRoles(['admin', 'superadmin']), getCustomerProfile);
 router.route('/:id')
     .get(protect, requireRoles(['admin', 'superadmin']), getUserById)
     .put(protect, requireRole('superadmin'), updateUser)
@@ -24,7 +29,4 @@ router.route('/addresses/:addressId')
     .delete(protect, deleteAddress);
 router.route('/addresses/:addressId/default')
     .put(protect, setDefaultAddress);
-router.get('/customers/analytics', protect, requireRoles(['admin', 'superadmin']), getCustomerAnalytics);
-router.post('/customers/send-email', protect, requireRoles(['admin', 'superadmin']), sendEmailToCustomer);
-router.get('/customers/:id/profile', protect, requireRoles(['admin', 'superadmin']), getCustomerProfile);
 export default router;
