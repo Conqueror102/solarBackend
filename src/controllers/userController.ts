@@ -428,6 +428,38 @@ const getCustomerProfile = asyncHandler(async (req: Request, res: Response) => {
     });
 });
 
+/**
+ * @desc    Bulk deactivate customer accounts
+ * @route   PATCH /api/users/customers/bulk-deactivate
+ * @access  Private/Admin/Superadmin
+ */
+const bulkDeactivateUsers = asyncHandler(async (req: Request, res: Response) => {
+    const { userIds } = req.body;
+
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        res.status(400);
+        throw new Error('User IDs must be provided as a non-empty array.');
+    }
+
+    const result = await User.updateMany(
+        { 
+            _id: { $in: userIds }, 
+            role: 'user' // Ensure we only deactivate customers, not other roles
+        }, 
+        { $set: { isDeactivated: true } }
+    );
+
+    if (result.matchedCount === 0) {
+        res.status(404);
+        throw new Error('No matching customer accounts found for the provided IDs.');
+    }
+
+    res.status(200).json({
+        message: `${result.modifiedCount} customer(s) deactivated successfully.`,
+        modifiedCount: result.modifiedCount,
+    });
+});
+
 export {
     getUsers,
     getUserById,
@@ -446,5 +478,6 @@ export {
     getCustomerAnalytics,
     sendEmailToCustomer,
     getCustomerProfile,
-    getAllCustomers
+    getAllCustomers,
+    bulkDeactivateUsers
 }; 

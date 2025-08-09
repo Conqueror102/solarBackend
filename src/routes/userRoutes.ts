@@ -19,7 +19,8 @@ import {
     getCustomerAnalytics,
     sendEmailToCustomer,
     getCustomerProfile,
-    getAllCustomers
+    getAllCustomers,
+    bulkDeactivateUsers
 } from '../controllers/userController.js';
 
 const router = Router();
@@ -34,14 +35,16 @@ router.get('/customers', protect, requireRoles(['admin', 'superadmin']), getAllC
 router.get('/customers/analytics', protect, requireRoles(['admin', 'superadmin']), getCustomerAnalytics);
 router.post('/customers/send-email', protect, requireRoles(['admin', 'superadmin']), sendEmailToCustomer);
 router.get('/customers/:id/profile', protect, requireRoles(['admin', 'superadmin']), getCustomerProfile);
+router.patch('/customers/:id/deactivate', protect, requireRoles(['admin', 'superadmin']), deactivateUser);
+router.patch('/customers/:id/reactivate', protect, requireRoles(['admin', 'superadmin']), reactivateUser);
+
+// Route for bulk deactivating customers
+router.patch('/customers/bulk-deactivate', protect, requireRoles(['admin', 'superadmin']), bulkDeactivateUsers);
 
 router.route('/:id')
     .get(protect, requireRoles(['admin', 'superadmin']), getUserById)
     .put(protect, requireRole('superadmin'), updateUser)
     .delete(protect, requireRole('superadmin'), deleteUser);
-
-router.route('/:id/deactivate').patch(protect, requireRole('superadmin'), deactivateUser);
-router.route('/:id/reactivate').patch(protect, requireRole('superadmin'), reactivateUser);
 
 router.route('/settings')
     .get(protect, getUserSettings)
