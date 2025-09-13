@@ -8,6 +8,7 @@ import { Notification, INotification } from '../models/Notification.js';
 import { User } from '../models/User.js';
 import { Order } from '../models/Order.js';
 import { Product } from '../models/Product.js';
+import { Brand } from '../models/Brand.js';
 
 // Admin notification types
 export type AdminNotificationType = 
@@ -20,6 +21,9 @@ export type AdminNotificationType =
   | 'out_of_stock_alert'
   | 'product_added'
   | 'product_updated'
+  | 'brand_added'
+  | 'brand_updated'
+  | 'brand_deleted'
   | 'system_alert'
   | 'security_alert'
   | 'performance_alert'
@@ -36,10 +40,13 @@ export interface AdminNotificationData {
   orderAmount?: number;
   productId?: string;
   productName?: string;
+  brandId?: string;
+  brandName?: string;
   stockLevel?: number;
   threshold?: number;
   revenue?: number;
   activityType?: string;
+  changes?: string[];
   [key: string]: any;
 }
 
@@ -428,6 +435,77 @@ export const notifyInventoryAlert = async (
       productName,
       stockLevel: currentStock,
       alertType
+    },
+    'high'
+  );
+};
+
+/**
+ * Brand added notification
+ */
+export const notifyBrandAdded = async (
+  brandId: string,
+  brandName: string,
+  addedBy?: string
+): Promise<INotification[]> => {
+  return await createAdminNotification(
+    'brand_added',
+    'New Brand Added',
+    `New brand "${brandName}" has been added to the system${addedBy ? ` by ${addedBy}` : ''}`,
+    {
+      brandId,
+      brandName,
+      addedBy: addedBy || 'System'
+    },
+    'medium'
+  );
+};
+
+/**
+ * Brand updated notification
+ */
+export const notifyBrandUpdated = async (
+  brandId: string,
+  oldBrandName: string,
+  newBrandName: string,
+  updatedBy?: string,
+  changes?: string[]
+): Promise<INotification[]> => {
+  const changeMessage = changes && changes.length > 0 
+    ? `. Changes: ${changes.join(', ')}` 
+    : '';
+  
+  return await createAdminNotification(
+    'brand_updated',
+    'Brand Updated',
+    `Brand "${oldBrandName}" has been updated${newBrandName !== oldBrandName ? ` to "${newBrandName}"` : ''}${updatedBy ? ` by ${updatedBy}` : ''}${changeMessage}`,
+    {
+      brandId,
+      brandName: newBrandName,
+      oldBrandName,
+      updatedBy: updatedBy || 'System',
+      changes: changes || []
+    },
+    'medium'
+  );
+};
+
+/**
+ * Brand deleted notification
+ */
+export const notifyBrandDeleted = async (
+  brandId: string,
+  brandName: string,
+  deletedBy?: string
+): Promise<INotification[]> => {
+  return await createAdminNotification(
+    'brand_deleted',
+    'Brand Deleted',
+    `Brand "${brandName}" has been deleted from the system${deletedBy ? ` by ${deletedBy}` : ''}`,
+    {
+      brandId,
+      brandName,
+      deletedBy: deletedBy || 'System'
     },
     'high'
   );

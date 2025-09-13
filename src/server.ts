@@ -29,6 +29,7 @@ import { swaggerUi, swaggerDocs } from './utils/swagger.js';
 import { fileURLToPath } from 'url';
 import { startDailySalesReportCron } from './cron/dailySalesReport.js';
 import { startNotificationCleanupCron } from './cron/notificationCleanup.js';
+import brandRoutes from './routes/brandRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -97,6 +98,7 @@ if (process.env.NODE_ENV !== 'production') {
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/brands', brandRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/settings', settingsRoutes);
