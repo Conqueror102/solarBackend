@@ -31,6 +31,7 @@ import { startNotificationCleanupCron } from './cron/notificationCleanup.js';
 import { rawBodyParser } from './controllers/payments.controller.js';
 import paymentsRouter from "./routes/payments.routes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
+import brandRoutes from './routes/brandRoutes.js';
 // Load environment variables
 dotenv.config();
 // Environment variable checks
@@ -45,7 +46,8 @@ const requiredEnv = [
     'CLOUDINARY_API_KEY',
     'CLOUDINARY_API_SECRET',
     'STRIPE_SECRET_KEY',
-    'STRIPE_PUBLIC_KEY'
+    'STRIPE_PUBLIC_KEY',
+    'JWT_EXPIRES_IN'
 ];
 const missingEnv = requiredEnv.filter((key) => !process.env[key]);
 if (missingEnv.length > 0) {
@@ -86,6 +88,7 @@ if (process.env.NODE_ENV !== 'production') {
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/brands', brandRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/settings', settingsRoutes);

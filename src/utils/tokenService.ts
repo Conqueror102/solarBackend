@@ -6,7 +6,7 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 
 // Read environment variables once at module load time
 export const JWT_SECRET: string = process.env.JWT_SECRET || "defaultsecret";
-export const JWT_EXPIRES_IN: string | number = process.env.JWT_EXPIRES_IN || "1d";
+
 ;
 
 export interface TokenPayload {
@@ -17,7 +17,7 @@ export interface TokenPayload {
 
 export const generateAccessToken = (userId: string): string => {
   const options: SignOptions = {
-    expiresIn: JWT_EXPIRES_IN,
+    expiresIn: "7d",
   };
 
   return jwt.sign(

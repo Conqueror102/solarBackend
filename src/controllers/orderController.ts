@@ -74,7 +74,7 @@ export const addOrder = asyncHandler(async (req: Request, res: Response) => {
       );
     }
     if (user) {
-      await notifyNewOrderPlaced({ orderId:createdOrder._id.toString(), orderAmount:createdOrder.totalAmount, customerName:(user as any).name, customerEmail:user.email, currency:createdOrder.currency || "NGN"});
+      await notifyNewOrderPlaced(createdOrder._id.toString(), createdOrder.totalAmount, (user as any).name, user.email);
     }
 
     res.status(201).json(createdOrder);
@@ -203,14 +203,13 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
 
 const user = await User.findById(order.user);
 if (user) {
- await notifyOrderStatusChanged({
-  orderId: order._id.toString(),
-  oldStatus: order.status,
-  newStatus: req.body.status || order.status,
-  orderAmount: order.totalAmount,
-  customerName: user.name,
-  currency: order.currency || "NGN"
-});
+ await notifyOrderStatusChanged(
+  order._id.toString(),
+  order.status,
+  req.body.status || order.status,
+  order.totalAmount,
+  user.name
+);
 }
     }
 

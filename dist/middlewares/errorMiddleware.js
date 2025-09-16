@@ -1,4 +1,6 @@
-import { AppError, SAFE_ERROR_MESSAGES } from '../utils/errorUtils';
+import { AppError, SAFE_ERROR_MESSAGES } from '../utils/errorUtils.js';
+// Read environment variables once at module load time
+const NODE_ENV = process.env.NODE_ENV;
 import mongoose from 'mongoose';
 import Joi from 'joi';
 /**
@@ -33,7 +35,7 @@ const errorHandler = (err, req, res, next) => {
     let error = { ...err };
     error.message = err.message;
     // Log error for debugging
-    if (process.env.NODE_ENV === 'development') {
+    if (NODE_ENV === 'development') {
         console.error('Error 🔥:', err);
     }
     // Handle specific error types
@@ -58,10 +60,10 @@ const errorHandler = (err, req, res, next) => {
         code: error.code || 'SERVER_ERROR',
         message: error.isOperational ?
             error.message :
-            process.env.NODE_ENV === 'production' ?
+            NODE_ENV === 'production' ?
                 SAFE_ERROR_MESSAGES.SERVER_ERROR :
                 error.message,
-        ...(process.env.NODE_ENV === 'development' && {
+        ...(NODE_ENV === 'development' && {
             error: err,
             stack: err.stack,
         }),

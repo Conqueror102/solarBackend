@@ -1,15 +1,22 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 dotenv.config();
+// Read environment variables once at module load time
+const NODE_ENV = process.env.NODE_ENV;
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = process.env.SMTP_PORT;
+const SMTP_SECURE = process.env.SMTP_SECURE;
 // Email configuration with better error handling
 const createTransporter = () => {
-    const isProduction = process.env.NODE_ENV === 'production';
+    const isProduction = NODE_ENV === 'production';
     // Gmail configuration with improved settings
     const gmailConfig = {
         service: 'gmail',
         auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
+            user: SMTP_USER,
+            pass: SMTP_PASS
         },
         // Connection settings to prevent timeouts
         pool: true,
@@ -28,12 +35,12 @@ const createTransporter = () => {
     };
     // Alternative: Custom SMTP configuration
     const customSMTPConfig = {
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+        host: SMTP_HOST || 'smtp.gmail.com',
+        port: parseInt(SMTP_PORT || '587'),
+        secure: SMTP_SECURE === 'true', // true for 465, false for other ports
         auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
+            user: SMTP_USER,
+            pass: SMTP_PASS
         },
         // Connection settings
         pool: true,
@@ -49,7 +56,7 @@ const createTransporter = () => {
         }
     };
     // Use custom SMTP if host is specified, otherwise use Gmail
-    const config = process.env.SMTP_HOST ? customSMTPConfig : gmailConfig;
+    const config = SMTP_HOST ? customSMTPConfig : gmailConfig;
     return nodemailer.createTransport(config);
 };
 const transporter = createTransporter();
@@ -70,7 +77,7 @@ const paymentStatusMessages = {
 async function sendMail(to, subject, html) {
     try {
         const mailOptions = {
-            from: `"Solar Store" <${process.env.SMTP_USER}>`,
+            from: `"Solar Store" <${SMTP_USER}>`,
             to,
             subject,
             html,
@@ -88,7 +95,7 @@ async function sendMail(to, subject, html) {
             command: error.command
         });
         // Don't throw error in production to prevent app crashes
-        if (process.env.NODE_ENV === 'production') {
+        if (NODE_ENV === 'production') {
             console.error('Email failed but continuing...');
             return null;
         }
@@ -153,9 +160,9 @@ export const verifySMTPConnection = async () => {
             message: error.message,
             code: error.code,
             command: error.command,
-            host: process.env.SMTP_HOST || 'smtp.gmail.com',
-            port: process.env.SMTP_PORT || '587',
-            user: process.env.SMTP_USER
+            host: SMTP_HOST || 'smtp.gmail.com',
+            port: SMTP_PORT || '587',
+            user: SMTP_USER
         });
         // Provide helpful troubleshooting tips
         console.error('\n🔧 Troubleshooting tips:');

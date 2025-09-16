@@ -1,9 +1,3 @@
-/**
- * adminNotificationService.ts - Admin Notification Service
- * ---------------------
- * Provides utility functions for creating admin-specific notifications
- * about system events, user activities, and business metrics.
- */
 import { Notification } from '../models/Notification.js';
 import { User } from '../models/User.js';
 /**
@@ -14,8 +8,8 @@ const getAdminUsers = async () => {
         const admins = await User.find({
             role: { $in: ['admin', 'superadmin'] },
             isDeactivated: false
-        });
-        return admins.map(admin => admin._id.toString());
+        }).select('_id');
+        return admins.map(admin => admin._id);
     }
     catch (error) {
         console.error('Error getting admin users:', error);
@@ -135,7 +129,7 @@ export const notifyOutOfStockAlert = async (productId, productName) => {
  * Product added notification
  */
 export const notifyProductAdded = async (productId, productName, addedBy) => {
-    return await createAdminNotification('product_added', 'New Product Added', `New product "${productName}" has been added to the catalog by ${addedBy}`, {
+    return await createAdminNotification('product_added', 'New Product Added', `New product \"${productName}\" has been added to the catalog by ${addedBy}`, {
         productId,
         productName,
         addedBy
@@ -145,7 +139,7 @@ export const notifyProductAdded = async (productId, productName, addedBy) => {
  * Product updated notification
  */
 export const notifyProductUpdated = async (productId, productName, updatedBy, changes) => {
-    return await createAdminNotification('product_updated', 'Product Updated', `Product "${productName}" has been updated by ${updatedBy}. Changes: ${changes.join(', ')}`, {
+    return await createAdminNotification('product_updated', 'Product Updated', `Product \"${productName}\" has been updated by ${updatedBy}. Changes: ${changes.join(', ')}`, {
         productId,
         productName,
         updatedBy,
@@ -215,7 +209,7 @@ export const notifyInventoryAlert = async (alertType, productName, currentStock,
  * Brand added notification
  */
 export const notifyBrandAdded = async (brandId, brandName, addedBy) => {
-    return await createAdminNotification('brand_added', 'New Brand Added', `New brand "${brandName}" has been added to the system${addedBy ? ` by ${addedBy}` : ''}`, {
+    return await createAdminNotification('brand_added', 'New Brand Added', `New brand \"${brandName}\" has been added to the system${addedBy ? ` by ${addedBy}` : ''}`, {
         brandId,
         brandName,
         addedBy: addedBy || 'System'
@@ -228,7 +222,7 @@ export const notifyBrandUpdated = async (brandId, oldBrandName, newBrandName, up
     const changeMessage = changes && changes.length > 0
         ? `. Changes: ${changes.join(', ')}`
         : '';
-    return await createAdminNotification('brand_updated', 'Brand Updated', `Brand "${oldBrandName}" has been updated${newBrandName !== oldBrandName ? ` to "${newBrandName}"` : ''}${updatedBy ? ` by ${updatedBy}` : ''}${changeMessage}`, {
+    return await createAdminNotification('brand_updated', 'Brand Updated', `Brand \"${oldBrandName}\" has been updated${newBrandName !== oldBrandName ? ` to \"${newBrandName}\"` : ''}${updatedBy ? ` by ${updatedBy}` : ''}${changeMessage}`, {
         brandId,
         brandName: newBrandName,
         oldBrandName,
@@ -240,7 +234,7 @@ export const notifyBrandUpdated = async (brandId, oldBrandName, newBrandName, up
  * Brand deleted notification
  */
 export const notifyBrandDeleted = async (brandId, brandName, deletedBy) => {
-    return await createAdminNotification('brand_deleted', 'Brand Deleted', `Brand "${brandName}" has been deleted from the system${deletedBy ? ` by ${deletedBy}` : ''}`, {
+    return await createAdminNotification('brand_deleted', 'Brand Deleted', `Brand \"${brandName}\" has been deleted from the system${deletedBy ? ` by ${deletedBy}` : ''}`, {
         brandId,
         brandName,
         deletedBy: deletedBy || 'System'

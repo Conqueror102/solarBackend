@@ -1,46 +1,55 @@
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import { User } from '../models/User.js';
-const ACCESS_TOKEN_EXPIRY = '15m'; // 15 minutes
-const REFRESH_TOKEN_EXPIRY = '7d'; // 7 days
+// import crypto from 'crypto';
+// import { User } from '../models/User.js';
+// TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+// Read environment variables once at module load time
+export const JWT_SECRET = process.env.JWT_SECRET || "defaultsecret";
+;
 export const generateAccessToken = (userId) => {
-    return jwt.sign({ id: userId, type: 'access' }, process.env.JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRY });
+    const options = {
+        expiresIn: "7d",
+    };
+    return jwt.sign({ id: userId, type: "access" }, JWT_SECRET, options);
 };
-export const generateRefreshToken = async (userId, ip) => {
-    const user = await User.findById(userId);
-    if (!user) {
-        throw new Error('User not found');
-    }
-    // Generate a secure random token
-    const refreshToken = crypto.randomBytes(40).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    // Save the refresh token
-    await user.addRefreshToken(refreshToken, expiresAt, ip);
-    return refreshToken;
-};
+// TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+// export const generateRefreshToken = async (userId: string, ip?: string): Promise<string> => {
+//   const user = await User.findById(userId);
+//   if (!user) {
+//     throw new Error('User not found');
+//   }
+//   // Generate a secure random token
+//   const refreshToken = crypto.randomBytes(40).toString('hex');
+//   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+//   // Save the refresh token
+//   await user.addRefreshToken(refreshToken, expiresAt, ip);
+//   return refreshToken;
+// };
 export const verifyAccessToken = (token) => {
-    return jwt.verify(token, process.env.JWT_SECRET);
+    return jwt.verify(token, JWT_SECRET);
 };
-export const revokeRefreshToken = async (userId, token, ip) => {
-    const user = await User.findById(userId);
-    if (!user) {
-        throw new Error('User not found');
-    }
-    await user.revokeRefreshToken(token, ip);
-};
-export const rotateRefreshToken = async (userId, oldToken, ip) => {
-    // Revoke the old token
-    await revokeRefreshToken(userId, oldToken, ip);
-    // Generate a new token
-    return await generateRefreshToken(userId, ip);
-};
-export const verifyRefreshToken = async (token) => {
-    const user = await User.findOne({
-        'refreshTokens.token': token,
-        'refreshTokens.revokedAt': { $exists: false }
-    });
-    if (!user || !user.hasValidRefreshToken(token)) {
-        return null;
-    }
-    return user._id.toString();
-};
+// TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+// export const revokeRefreshToken = async (userId: string, token: string, ip?: string): Promise<void> => {
+//   const user = await User.findById(userId);
+//   if (!user) {
+//     throw new Error('User not found');
+//   }
+//   await user.revokeRefreshToken(token, ip);
+// };
+// TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+// export const rotateRefreshToken = async (userId: string, oldToken: string, ip?: string): Promise<string> => {
+//   // Revoke the old token
+//   await revokeRefreshToken(userId, oldToken, ip);
+//   // Generate a new token
+//   return await generateRefreshToken(userId, ip);
+// };
+// TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+// export const verifyRefreshToken = async (token: string): Promise<string | null> => {
+//   const user = await User.findOne({ 
+//     'refreshTokens.token': token,
+//     'refreshTokens.revokedAt': { $exists: false }
+//   });
+//   if (!user || !user.hasValidRefreshToken(token)) {
+//     return null;
+//   }
+//   return user._id.toString();
+// };

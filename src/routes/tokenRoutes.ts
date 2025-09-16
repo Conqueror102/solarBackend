@@ -1,8 +1,8 @@
-import { Router } from 'express';
-import { refreshAccessToken } from '../controllers/authController.js';
+// import { Router } from 'express';
+// import { refreshAccessToken } from '../controllers/authController.js';
 
-const router = Router();
+// const router = Router();
 
-router.post('/refresh-token', refreshAccessToken);
+// router.post('/refresh-token', refreshAccessToken);
 
-export default router;
+// export default router;

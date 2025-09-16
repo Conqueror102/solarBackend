@@ -4,6 +4,8 @@ import { User } from "../models/User.js";
 import { Product } from "../models/Product.js";
 import { sendOrderPlacedEmail, sendOrderStatusUpdateEmail } from "../utils/email.js";
 import mongoose from "mongoose";
+// Read environment variables once at module load time
+const NODE_ENV = process.env.NODE_ENV;
 import { createOrderStatusNotification, } from "../utils/notificationService.js";
 import { notifyNewOrderPlaced, notifyOrderStatusChanged, } from "../utils/adminNotificationService.js";
 import { createOrderSchema } from "../validators/order.js";
@@ -22,7 +24,7 @@ export const addOrder = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error("Shipping and billing address are required");
     }
-    const useTxn = process.env.NODE_ENV === "production";
+    const useTxn = NODE_ENV === "production";
     const session = useTxn ? await mongoose.startSession() : null;
     if (session)
         session.startTransaction();
@@ -60,7 +62,7 @@ export const addOrder = asyncHandler(async (req, res) => {
             await sendOrderPlacedEmail({ email: user.email, name: user.name }, { _id: createdOrder._id.toString(), totalAmount: createdOrder.totalAmount, status: createdOrder.status });
         }
         if (user) {
-            await notifyNewOrderPlaced({ orderId: createdOrder._id.toString(), orderAmount: createdOrder.totalAmount, customerName: user.name, customerEmail: user.email, currency: createdOrder.currency || "NGN" });
+            await notifyNewOrderPlaced(createdOrder._id.toString(), createdOrder.totalAmount, user.name, user.email);
         }
         res.status(201).json(createdOrder);
     }
@@ -170,14 +172,7 @@ export const updateOrder = asyncHandler(async (req, res) => {
             });
             const user = await User.findById(order.user);
             if (user) {
-                await notifyOrderStatusChanged({
-                    orderId: order._id.toString(),
-                    oldStatus: order.status,
-                    newStatus: req.body.status || order.status,
-                    orderAmount: order.totalAmount,
-                    customerName: user.name,
-                    currency: order.currency || "NGN"
-                });
+                await notifyOrderStatusChanged(order._id.toString(), order.status, req.body.status || order.status, order.totalAmount, user.name);
             }
         }
     }

@@ -43,11 +43,7 @@ const createUser = asyncHandler(async (req: Request, res: Response) => {
     const user = await User.create({ name, email, password, role: newRole });
     
     // Notify admins about new user registration
-    await notifyNewUserRegistration({
-        userId:user._id.toString(),
-        userName:user.name,
-        userEmail:user.email
-    });
+    await notifyNewUserRegistration(user._id.toString(), user.name, user.email);
     
     res.status(201).json({
         _id: user._id,

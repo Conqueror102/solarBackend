@@ -7,6 +7,8 @@ import { sendOrderStatusUpdateEmail } from "../utils/email.js";
 import { createPaymentSuccessNotification, createPaymentFailedNotification, } from "../utils/notificationService.js";
 import { notifyPaymentReceived, notifyPaymentFailed, } from "../utils/adminNotificationService.js";
 import Transaction from "../models/transaction.history.js";
+// Read environment variables once at module load time
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET;
 // IMPORTANT: use this ONLY on the webhook route
 export const rawBodyParser = rawParser({ type: "*/*" });
 /**
@@ -146,7 +148,7 @@ export async function paystackWebhook(req, res) {
         const headerSig = req.header("x-paystack-signature");
         if (!headerSig)
             return res.sendStatus(401);
-        const secret = process.env.PAYSTACK_SECRET;
+        const secret = PAYSTACK_SECRET;
         const raw = req.body;
         const computed = crypto
             .createHmac("sha512", secret)
@@ -158,10 +160,10 @@ export async function paystackWebhook(req, res) {
             return res.sendStatus(401);
         const event = JSON.parse(raw.toString("utf8"));
         const reference = event.data.reference;
-        // 🔎 Defensive verify with Paystack
+        // Defensive verify with Paystack
         const verifyResp = await paystack.verify(reference);
         const trxData = verifyResp.data;
-        // 🔄 Upsert into Transaction collection
+        // Upsert into Transaction collection
         let trx = await Transaction.findOneAndUpdate({ transactionId: trxData.id }, {
             $setOnInsert: {
                 transactionId: trxData.id,
@@ -177,7 +179,7 @@ export async function paystackWebhook(req, res) {
                 paidAt: trxData.paid_at,
             },
         }, { upsert: true, new: true });
-        //  Handle different event types
+        // Handle different event types
         switch (event.event) {
             case "charge.success":
                 await trx.updateStatus("successful");
@@ -195,7 +197,7 @@ export async function paystackWebhook(req, res) {
             default:
                 console.log("Unhandled event:", event.event);
         }
-        // 🧾 Update Order if linked
+        // Update Order if linked
         const order = await Order.findOne({ paystackReference: reference });
         if (order) {
             if (trx.status === "successful") {
