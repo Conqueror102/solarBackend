@@ -212,6 +212,41 @@ export const notifyInventoryAlert = async (alertType, productName, currentStock,
     }, 'high');
 };
 /**
+ * Brand added notification
+ */
+export const notifyBrandAdded = async (brandId, brandName, addedBy) => {
+    return await createAdminNotification('brand_added', 'New Brand Added', `New brand "${brandName}" has been added to the system${addedBy ? ` by ${addedBy}` : ''}`, {
+        brandId,
+        brandName,
+        addedBy: addedBy || 'System'
+    }, 'medium');
+};
+/**
+ * Brand updated notification
+ */
+export const notifyBrandUpdated = async (brandId, oldBrandName, newBrandName, updatedBy, changes) => {
+    const changeMessage = changes && changes.length > 0
+        ? `. Changes: ${changes.join(', ')}`
+        : '';
+    return await createAdminNotification('brand_updated', 'Brand Updated', `Brand "${oldBrandName}" has been updated${newBrandName !== oldBrandName ? ` to "${newBrandName}"` : ''}${updatedBy ? ` by ${updatedBy}` : ''}${changeMessage}`, {
+        brandId,
+        brandName: newBrandName,
+        oldBrandName,
+        updatedBy: updatedBy || 'System',
+        changes: changes || []
+    }, 'medium');
+};
+/**
+ * Brand deleted notification
+ */
+export const notifyBrandDeleted = async (brandId, brandName, deletedBy) => {
+    return await createAdminNotification('brand_deleted', 'Brand Deleted', `Brand "${brandName}" has been deleted from the system${deletedBy ? ` by ${deletedBy}` : ''}`, {
+        brandId,
+        brandName,
+        deletedBy: deletedBy || 'System'
+    }, 'high');
+};
+/**
  * Get admin notification statistics
  */
 export const getAdminNotificationStats = async () => {

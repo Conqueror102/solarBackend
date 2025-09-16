@@ -2,16 +2,16 @@
 import { Router } from 'express';
 import { protect } from '../middlewares/authMiddleware.js';
 import { requireRoles } from '../middlewares/roleMiddleware.js';
-import { addOrder, getMyOrders, payOrder, getOrderById, updateOrder, deleteOrder, cancelOrder, getAllOrders } from '../controllers/orderController.js';
+import { addOrder, getMyOrders, getOrderById, updateOrder, deleteOrder, cancelOrder, getOrders } from '../controllers/orderController.js';
 
 const router = Router();
 
 router.route('/')
-    .get(protect, requireRoles(['admin', 'superadmin']), getAllOrders)
+    .get(protect, requireRoles(['admin', 'superadmin']), getOrders)
     .post(protect, addOrder);
 
 router.route('/myorders').get(protect, getMyOrders);
-router.route('/pay').post(protect, payOrder);
+
 
 router.route('/:id')
     .get(protect, getOrderById)

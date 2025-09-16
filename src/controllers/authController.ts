@@ -1,6 +1,11 @@
 
 /**
- * authController.js
+ * authCimport { generateAccessToken, 
+    generateRefreshToken, 
+    verifyRefreshToken,
+    rotateRefreshToken 
+} from '../utils/tokenService.js';
+import { PasswordValidationService } from '../utils/passwordValidation.js';ller.js
  * -----------------
  * Handles user registration, login, and profile management using JWT.
  */
@@ -10,31 +15,67 @@ import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { sendCustomEmail } from '../utils/email.js';
 import { registerSchema, loginSchema } from '../validators/auth.js';
-import generateToken from '../utils/generateToken.js';
+import { 
+    generateAccessToken
+    // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+    // generateRefreshToken, 
+    // verifyRefreshToken,
+    // rotateRefreshToken, 
+    // revokeRefreshToken
+} from '../utils/tokenService.js';
+import { AppError, AuthenticationError, DuplicateError, SAFE_ERROR_MESSAGES, ValidationError } from '../utils/errorUtils.js';
+import { PasswordValidationService } from '../utils/passwordValidation.js';
+
+// Read environment variables once at module load time
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5000';
+const NODE_ENV = process.env.NODE_ENV;
 
 const registerUser = asyncHandler(async (req: Request, res: Response) => {
     const { error } = registerSchema.validate(req.body);
     if (error) {
-        res.status(400);
-        throw new Error(error.details[0].message);
+        throw new ValidationError(SAFE_ERROR_MESSAGES.VALIDATION_FAILED);
     }
+
     const { name, email, password, role } = req.body;
+    
+    // TEMPORARILY DISABLED: Enhanced password validation for frontend compatibility
+    // const passwordValidation = PasswordValidationService.validatePassword(password);
+    // if (!passwordValidation.isValid) {
+    //     throw new ValidationError('Password does not meet security requirements');
+    // }
+
     if (role && role !== 'user') {
-        res.status(403);
-        throw new Error('You cannot register as admin or superadmin');
+        throw new AuthenticationError('Invalid registration request');
     }
+
     const userExists = await User.findOne({ email });
     if (userExists) {
-        res.status(400);
-        throw new Error('User already exists');
+        throw new DuplicateError('account');
     }
+
     // Generate email verification token
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
-    const user = await User.create({ name, email, password, role: 'user', emailVerificationToken, emailVerified: false });
+    const user = await User.create({ 
+        name, 
+        email, 
+        password, 
+        role: 'user', 
+        emailVerificationToken, 
+        emailVerified: false 
+    });
+
     // Send verification email
-    const verifyUrl = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
+    const verifyUrl = `${FRONTEND_URL}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
     const html = `<p>Welcome! Please <a href="${verifyUrl}">verify your email</a> to activate your account.</p>`;
-    await sendCustomEmail(email, 'Verify Your Email', html);
+    
+    try {
+        await sendCustomEmail(email, 'Verify Your Email', html);
+    } catch (error) {
+        // Delete the created user if email sending fails
+        await user.deleteOne();
+        throw new AppError('Unable to send verification email', 500, 'EMAIL_ERROR');
+    }
+
     res.status(201).json({
         _id: user._id,
         name: user.name,
@@ -46,33 +87,54 @@ const registerUser = asyncHandler(async (req: Request, res: Response) => {
   
 
 const loginUser = asyncHandler(async (req: Request, res: Response) => {
+    // Validate request body
     const { error } = loginSchema.validate(req.body);
     if (error) {
-        res.status(400);
-        throw new Error(error.details[0].message);
+        throw new ValidationError(SAFE_ERROR_MESSAGES.VALIDATION_FAILED);
     }
+
     const { email, password } = req.body;
     const user = await User.findOne({ email });
-    if (user && user.isDeactivated) {
-        res.status(403);
-        throw new Error('Your account has been deactivated. Please contact support.');
+
+    // Use consistent error message for invalid credentials
+    if (!user) {
+        throw new AuthenticationError(SAFE_ERROR_MESSAGES.INVALID_PASSWORD);
     }
-    if (user && !user.emailVerified) {
-        res.status(403);
-        throw new Error('Please verify your email before logging in.');
+
+    if (user.isDeactivated) {
+        throw new AuthenticationError(SAFE_ERROR_MESSAGES.ACCOUNT_LOCKED);
     }
-    if (user && (await user.matchPassword(password))) {
-        res.json({
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            token: generateToken(user._id),
-        });
-    } else {
-        res.status(401);
-        throw new Error('Invalid email or password');
+
+    if (!user.emailVerified) {
+        throw new AuthenticationError('Email verification required');
     }
+
+    const isPasswordValid = await user.matchPassword(password);
+    if (!isPasswordValid) {
+        throw new AuthenticationError(SAFE_ERROR_MESSAGES.INVALID_PASSWORD);
+    }
+
+    // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+    // Generate tokens
+    const accessToken = generateAccessToken(user._id);
+    // const refreshToken = await generateRefreshToken(user._id, req.ip);
+
+    // Set refresh token in HTTP-only cookie
+    // res.cookie('refreshToken', refreshToken, {
+    //     httpOnly: true,
+    //     secure: process.env.NODE_ENV === 'production',
+    //     sameSite: 'strict',
+    //     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    // });
+
+    // Send response without sensitive information
+    res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        accessToken,
+    });
 });
 
 const getUserProfile = asyncHandler(async (req: Request, res: Response) => {
@@ -90,9 +152,9 @@ const getUserProfile = asyncHandler(async (req: Request, res: Response) => {
     }
 });
 
-const logoutUser = asyncHandler(async (req: Request, res: Response) => {
-    res.json({ message: 'Logged out successfully' });
-});
+// const logoutUser = asyncHandler(async (req: Request, res: Response) => {
+//     res.json({ message: 'Logged out successfully' });
+// });
 
 const getCurrentUser = asyncHandler(async (req: Request, res: Response) => {
     const user = await User.findById((req as any).user._id);
@@ -120,7 +182,7 @@ const forgotPassword = asyncHandler(async (req: Request, res: Response) => {
     user.passwordResetToken = token;
     user.passwordResetExpires = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
     await user.save();
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
+    const resetUrl = `${FRONTEND_URL}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
     const html = `<p>You requested a password reset. <a href="${resetUrl}">Click here to reset your password</a>. This link is valid for 1 hour.</p>`;
     await sendCustomEmail(email, 'Password Reset Request', html);
     res.status(200).json({ message: 'If that email is registered, a reset link has been sent.' });
@@ -151,6 +213,20 @@ const changePassword = asyncHandler(async (req: Request, res: Response) => {
         res.status(400);
         throw new Error('Current password is incorrect');
     }
+
+    // TEMPORARILY DISABLED: Enhanced password validation for frontend compatibility
+    // const passwordValidation = PasswordValidationService.validatePassword(newPassword);
+    // if (!passwordValidation.isValid) {
+    //     res.status(400);
+    //     throw new Error(`New password is too weak: ${passwordValidation.errors.join(', ')}`);
+    // }
+
+    // Check if new password is same as current
+    if (await user.matchPassword(newPassword)) {
+        res.status(400);
+        throw new Error('New password cannot be the same as current password');
+    }
+
     user.password = newPassword;
     await user.save();
     res.json({ message: 'Password updated successfully' });
@@ -188,4 +264,62 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
     res.json({ message: 'Email verified successfully. You can now log in.' });
 });
 
-export { registerUser, loginUser, getUserProfile, logoutUser, getCurrentUser, updateUserProfile, forgotPassword, resetPassword, changePassword, verifyEmail };
+// TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+// const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
+//     const refreshToken = req.cookies.refreshToken;
+    
+//     if (!refreshToken) {
+//         res.status(401);
+//         throw new Error('Refresh token not found');
+//     }
+
+//     const userId = await verifyRefreshToken(refreshToken);
+//     if (!userId) {
+//         res.status(401);
+//         throw new Error('Invalid or expired refresh token');
+//     }
+
+//     // Generate new tokens
+//     const newAccessToken = generateAccessToken(userId);
+//     const newRefreshToken = await rotateRefreshToken(userId, refreshToken, req.ip);
+
+//     // Set new refresh token in HTTP-only cookie
+//     res.cookie('refreshToken', newRefreshToken, {
+//         httpOnly: true,
+//         secure: process.env.NODE_ENV === 'production',
+//         sameSite: 'strict',
+//         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+//     });
+
+//     res.json({ accessToken: newAccessToken });
+// });
+
+// TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
+// Update logout to handle refresh tokens
+const logoutUser = asyncHandler(async (req: Request, res: Response) => {
+    // const refreshToken = req.cookies.refreshToken;
+    
+    // if (refreshToken) {
+    //     const userId = await verifyRefreshToken(refreshToken);
+    //     if (userId) {
+    //         await revokeRefreshToken(userId, refreshToken, req.ip);
+    //     }
+    // }
+
+    // res.clearCookie('refreshToken');
+    res.json({ message: 'Logged out successfully' });
+});
+
+export { 
+    registerUser, 
+    loginUser, 
+    getUserProfile, 
+    logoutUser, 
+    getCurrentUser, 
+    updateUserProfile, 
+    forgotPassword, 
+    resetPassword, 
+    changePassword, 
+    verifyEmail
+    // TEMPORARILY DISABLED: refreshAccessToken 
+};

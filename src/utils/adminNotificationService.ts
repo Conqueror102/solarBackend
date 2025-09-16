@@ -4,10 +4,10 @@
  * Provides utility functions for creating admin-specific notifications
  * about system events, user activities, and business metrics.
  */
+import mongoose from 'mongoose';
 import { Notification, INotification } from '../models/Notification.js';
 import { User } from '../models/User.js';
-import { Order } from '../models/Order.js';
-import { Product } from '../models/Product.js';
+
 
 // Admin notification types
 export type AdminNotificationType = 
@@ -20,6 +20,9 @@ export type AdminNotificationType =
   | 'out_of_stock_alert'
   | 'product_added'
   | 'product_updated'
+  | 'brand_added'
+  | 'brand_updated'
+  | 'brand_deleted'
   | 'system_alert'
   | 'security_alert'
   | 'performance_alert'
@@ -36,23 +39,26 @@ export interface AdminNotificationData {
   orderAmount?: number;
   productId?: string;
   productName?: string;
+  brandId?: string;
+  brandName?: string;
   stockLevel?: number;
   threshold?: number;
   revenue?: number;
   activityType?: string;
+  changes?: string[];
   [key: string]: any;
 }
 
 /**
  * Get all admin users (admin and superadmin roles)
  */
-const getAdminUsers = async (): Promise<string[]> => {
+const getAdminUsers = async (): Promise<mongoose.Types.ObjectId[]> => {
   try {
     const admins = await User.find({ 
       role: { $in: ['admin', 'superadmin'] },
       isDeactivated: false 
-    });
-    return admins.map(admin => admin._id.toString());
+    }).select('_id');
+    return admins.map(admin => admin._id);
   } catch (error) {
     console.error('Error getting admin users:', error);
     return [];
@@ -271,7 +277,7 @@ export const notifyProductAdded = async (
   return await createAdminNotification(
     'product_added',
     'New Product Added',
-    `New product "${productName}" has been added to the catalog by ${addedBy}`,
+    `New product \"${productName}\" has been added to the catalog by ${addedBy}`,
     {
       productId,
       productName,
@@ -293,7 +299,7 @@ export const notifyProductUpdated = async (
   return await createAdminNotification(
     'product_updated',
     'Product Updated',
-    `Product "${productName}" has been updated by ${updatedBy}. Changes: ${changes.join(', ')}`,
+    `Product \"${productName}\" has been updated by ${updatedBy}. Changes: ${changes.join(', ')}`,
     {
       productId,
       productName,
@@ -434,6 +440,77 @@ export const notifyInventoryAlert = async (
 };
 
 /**
+ * Brand added notification
+ */
+export const notifyBrandAdded = async (
+  brandId: string,
+  brandName: string,
+  addedBy?: string
+): Promise<INotification[]> => {
+  return await createAdminNotification(
+    'brand_added',
+    'New Brand Added',
+    `New brand \"${brandName}\" has been added to the system${addedBy ? ` by ${addedBy}` : ''}`,
+    {
+      brandId,
+      brandName,
+      addedBy: addedBy || 'System'
+    },
+    'medium'
+  );
+};
+
+/**
+ * Brand updated notification
+ */
+export const notifyBrandUpdated = async (
+  brandId: string,
+  oldBrandName: string,
+  newBrandName: string,
+  updatedBy?: string,
+  changes?: string[]
+): Promise<INotification[]> => {
+  const changeMessage = changes && changes.length > 0 
+    ? `. Changes: ${changes.join(', ')}` 
+    : '';
+  
+  return await createAdminNotification(
+    'brand_updated',
+    'Brand Updated',
+    `Brand \"${oldBrandName}\" has been updated${newBrandName !== oldBrandName ? ` to \"${newBrandName}\"` : ''}${updatedBy ? ` by ${updatedBy}` : ''}${changeMessage}`,
+    {
+      brandId,
+      brandName: newBrandName,
+      oldBrandName,
+      updatedBy: updatedBy || 'System',
+      changes: changes || []
+    },
+    'medium'
+  );
+};
+
+/**
+ * Brand deleted notification
+ */
+export const notifyBrandDeleted = async (
+  brandId: string,
+  brandName: string,
+  deletedBy?: string
+): Promise<INotification[]> => {
+  return await createAdminNotification(
+    'brand_deleted',
+    'Brand Deleted',
+    `Brand \"${brandName}\" has been deleted from the system${deletedBy ? ` by ${deletedBy}` : ''}`,
+    {
+      brandId,
+      brandName,
+      deletedBy: deletedBy || 'System'
+    },
+    'high'
+  );
+};
+
+/**
  * Get admin notification statistics
  */
 export const getAdminNotificationStats = async (): Promise<{
@@ -498,4 +575,4 @@ export const getAdminNotificationStats = async (): Promise<{
     console.error('Error getting admin notification stats:', error);
     return { total: 0, unread: 0, byType: {}, byPriority: {} };
   }
-}; 
+};

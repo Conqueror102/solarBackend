@@ -47,7 +47,10 @@ const orderSchema = new Schema({
             'Cancelled' // Order was cancelled
         ]
     },
+    paystackReference: { type: String, default: null },
+    currency: { type: String, default: "NGN" },
     shippingAddress: { type: addressSchema, required: true },
     billingAddress: { type: addressSchema, required: true },
 }, { timestamps: true });
+orderSchema.index({ paystackReference: 1 }, { unique: true, partialFilterExpression: { paystackReference: { $type: 'string' } } });
 export const Order = mongoose.model('Order', orderSchema);

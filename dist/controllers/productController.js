@@ -11,8 +11,9 @@ import { sendLowStockEmail } from '../utils/email.js';
 import { createProductSchema, updateProductSchema } from '../validators/product.js';
 import uploadToCloudinary from '../utils/cloudinaryUpload.js';
 import { notifyProductAdded, notifyProductUpdated, notifyLowStockAlert, notifyOutOfStockAlert } from '../utils/adminNotificationService.js';
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
+import { validateImageFiles } from '../utils/imageValidation.js'; // Import validation utility
+// const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+// const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
 const getProducts = asyncHandler(async (req, res) => {
     const products = await Product.find({});
     res.json(products);
@@ -44,16 +45,14 @@ const createProduct = asyncHandler(async (req, res) => {
     const { name, description, price, category, stock } = productData;
     let images = [];
     if (req.files && Array.isArray(req.files)) {
+        // Validate all files at once
+        const validation = validateImageFiles(req.files);
+        if (!validation.isValid) {
+            res.status(400);
+            throw new Error(validation.error);
+        }
+        // Upload all valid files
         for (const file of req.files) {
-            if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-                res.status(400);
-                throw new Error('Invalid file type. Only JPEG, PNG, and WEBP are allowed.');
-            }
-            if (file.size > MAX_IMAGE_SIZE) {
-                res.status(400);
-                throw new Error('File too large. Max size is 2MB.');
-            }
-            // Use utility to upload to Cloudinary
             const result = await uploadToCloudinary(file.buffer, file.mimetype);
             images.push(result.secure_url);
         }
@@ -94,17 +93,14 @@ const updateProduct = asyncHandler(async (req, res) => {
         product.category = category ? new mongoose.Types.ObjectId(category) : product.category;
         product.stock = stock !== undefined ? stock : product.stock;
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+            // Validate all files at once
+            const validation = validateImageFiles(req.files);
+            if (!validation.isValid) {
+                res.status(400);
+                throw new Error(validation.error);
+            }
             let images = [];
             for (const file of req.files) {
-                if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-                    res.status(400);
-                    throw new Error('Invalid file type. Only JPEG, PNG, and WEBP are allowed.');
-                }
-                if (file.size > MAX_IMAGE_SIZE) {
-                    res.status(400);
-                    throw new Error('File too large. Max size is 2MB.');
-                }
-                // Use utility to upload to Cloudinary
                 const result = await uploadToCloudinary(file.buffer, file.mimetype);
                 images.push(result.secure_url);
             }

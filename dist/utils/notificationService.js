@@ -6,19 +6,23 @@
  */
 import { Notification } from '../models/Notification.js';
 import { User } from '../models/User.js';
+import { Types } from 'mongoose';
+// Money formatter (defaults to NGN)
+const formatMoney = (amount, currency = 'NGN') => new Intl.NumberFormat('en-NG', { style: 'currency', currency }).format(amount);
 /**
  * Create a notification for a single user
  */
 export const createNotification = async (userId, type, title, message, data, priority = 'medium', expiresAt) => {
     try {
+        const recipient = typeof userId === 'string' ? new Types.ObjectId(userId) : userId;
         const notification = await Notification.create({
-            recipient: userId,
+            recipient,
             type,
             title,
             message,
             data: data || {},
             priority,
-            expiresAt
+            expiresAt,
         });
         return notification;
     }
@@ -32,14 +36,14 @@ export const createNotification = async (userId, type, title, message, data, pri
  */
 export const createBulkNotifications = async (userIds, type, title, message, data, priority = 'medium', expiresAt) => {
     try {
-        const notifications = userIds.map(userId => ({
-            recipient: userId,
+        const notifications = userIds.map((uid) => ({
+            recipient: typeof uid === 'string' ? new Types.ObjectId(uid) : uid,
             type,
             title,
             message,
             data: data || {},
             priority,
-            expiresAt
+            expiresAt,
         }));
         const createdNotifications = await Notification.insertMany(notifications);
         return createdNotifications;
@@ -56,9 +60,8 @@ export const createNotificationForRole = async (role, type, title, message, data
     try {
         const users = await User.find({ role, isDeactivated: false });
         const userIds = users.map(user => user._id.toString());
-        if (userIds.length === 0) {
+        if (userIds.length === 0)
             return [];
-        }
         return await createBulkNotifications(userIds, type, title, message, data, priority, expiresAt);
     }
     catch (error) {
@@ -73,9 +76,8 @@ export const createNotificationForAllUsers = async (type, title, message, data, 
     try {
         const users = await User.find({ isDeactivated: false });
         const userIds = users.map(user => user._id.toString());
-        if (userIds.length === 0) {
+        if (userIds.length === 0)
             return [];
-        }
         return await createBulkNotifications(userIds, type, title, message, data, priority, expiresAt);
     }
     catch (error) {
@@ -89,47 +91,49 @@ export const createNotificationForAllUsers = async (type, title, message, data, 
  */
 export const createOrderStatusNotification = async (userId, orderId, status, additionalData) => {
     const titles = {
-        'pending': 'Order Confirmed',
-        'processing': 'Order Processing',
-        'shipped': 'Order Shipped',
-        'delivered': 'Order Delivered',
-        'cancelled': 'Order Cancelled',
-        'refunded': 'Order Refunded'
+        pending: 'Order Confirmed',
+        processing: 'Order Processing',
+        shipped: 'Order Shipped',
+        delivered: 'Order Delivered',
+        cancelled: 'Order Cancelled',
+        refunded: 'Order Refunded'
     };
     const messages = {
-        'pending': 'Your order has been confirmed and is being prepared.',
-        'processing': 'Your order is being processed and will be shipped soon.',
-        'shipped': 'Your order has been shipped and is on its way to you.',
-        'delivered': 'Your order has been delivered successfully.',
-        'cancelled': 'Your order has been cancelled as requested.',
-        'refunded': 'Your order has been refunded successfully.'
+        pending: 'Your order has been confirmed and is being prepared.',
+        processing: 'Your order is being processed and will be shipped soon.',
+        shipped: 'Your order has been shipped and is on its way to you.',
+        delivered: 'Your order has been delivered successfully.',
+        cancelled: 'Your order has been cancelled as requested.',
+        refunded: 'Your order has been refunded successfully.'
     };
     const title = titles[status] || 'Order Status Update';
     const message = messages[status] || `Your order status has been updated to: ${status}`;
-    return await createNotification(userId, 'order_status', title, message, {
-        orderId,
-        status,
-        ...additionalData
-    }, 'medium');
+    return await createNotification(userId, 'order_status', title, message, { orderId, status, ...additionalData }, 'medium');
 };
 /**
- * Create payment success notification
+ * Create payment success notification (currency-aware)
  */
-export const createPaymentSuccessNotification = async (userId, orderId, amount, paymentMethod) => {
-    return await createNotification(userId, 'payment_success', 'Payment Successful', `Your payment of $${amount.toFixed(2)} has been processed successfully using ${paymentMethod}.`, {
-        orderId,
-        amount,
-        paymentMethod
-    }, 'high');
-};
-/**
- * Create payment failed notification
- */
-export const createPaymentFailedNotification = async (userId, orderId, amount, paymentMethod, reason) => {
-    return await createNotification(userId, 'payment_failed', 'Payment Failed', `Your payment of $${amount.toFixed(2)} using ${paymentMethod} has failed.${reason ? ` Reason: ${reason}` : ''}`, {
+export const createPaymentSuccessNotification = async (userId, orderId, amount, paymentMethod, currency = 'NGN' // optional arg (default NGN)
+) => {
+    const pretty = formatMoney(amount, currency);
+    return await createNotification(userId, 'payment_success', 'Payment Successful', `Your payment of ${pretty} has been processed successfully using ${paymentMethod}.`, {
         orderId,
         amount,
         paymentMethod,
+        currency // ✅ include currency in stored data
+    }, 'high');
+};
+/**
+ * Create payment failed notification (currency-aware)
+ */
+export const createPaymentFailedNotification = async (userId, orderId, amount, paymentMethod, reason, currency = 'NGN' // optional arg (default NGN)
+) => {
+    const pretty = formatMoney(amount, currency);
+    return await createNotification(userId, 'payment_failed', 'Payment Failed', `Your payment of ${pretty} using ${paymentMethod} has failed.${reason ? ` Reason: ${reason}` : ''}`, {
+        orderId,
+        amount,
+        paymentMethod,
+        currency, // ✅ include currency in stored data
         reason
     }, 'urgent');
 };
@@ -137,10 +141,7 @@ export const createPaymentFailedNotification = async (userId, orderId, amount, p
  * Create product restock notification
  */
 export const createProductRestockNotification = async (userId, productId, productName) => {
-    return await createNotification(userId, 'product_restock', 'Product Back in Stock', `${productName} is now back in stock and available for purchase.`, {
-        productId,
-        productName
-    }, 'medium');
+    return await createNotification(userId, 'product_restock', 'Product Back in Stock', `${productName} is now back in stock and available for purchase.`, { productId, productName }, 'medium');
 };
 /**
  * Create promotion notification
@@ -158,17 +159,13 @@ export const createSystemNotification = async (userId, title, message, data, pri
  * Create email verification notification
  */
 export const createEmailVerificationNotification = async (userId, verificationToken) => {
-    return await createNotification(userId, 'email_verification', 'Email Verification Required', 'Please verify your email address to complete your account setup.', {
-        verificationToken
-    }, 'high');
+    return await createNotification(userId, 'email_verification', 'Email Verification Required', 'Please verify your email address to complete your account setup.', { verificationToken }, 'high');
 };
 /**
  * Create password reset notification
  */
 export const createPasswordResetNotification = async (userId, resetToken) => {
-    return await createNotification(userId, 'password_reset', 'Password Reset Request', 'A password reset has been requested for your account.', {
-        resetToken
-    }, 'high');
+    return await createNotification(userId, 'password_reset', 'Password Reset Request', 'A password reset has been requested for your account.', { resetToken }, 'high');
 };
 /**
  * Get unread notification count for a user

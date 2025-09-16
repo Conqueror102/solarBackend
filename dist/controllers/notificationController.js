@@ -267,23 +267,30 @@ export const createNotificationForUser = async (userId, type, title, message, da
     }
 };
 // Utility function to create notifications for multiple users
-export const createNotificationsForUsers = async (userIds, type, title, message, data, priority, expiresAt) => {
-    try {
-        const notifications = userIds.map(userId => ({
-            recipient: userId,
-            type,
-            title,
-            message,
-            data: data || {},
-            priority: priority || 'medium',
-            expiresAt
-        }));
-        const createdNotifications = await Notification.insertMany(notifications);
-        return createdNotifications;
-    }
-    catch (error) {
-        console.error('Error creating bulk notifications:', error);
-        return [];
-    }
-};
+// export const createNotificationsForUsers = async (
+//     userIds: string[],
+//     type: INotification['type'],
+//     title: string,
+//     message: string,
+//     data?: Record<string, any>,
+//     priority?: INotification['priority'],
+//     expiresAt?: Date
+// ) => {
+//     try {
+//         const notifications = userIds.map(userId => ({
+//             recipient: userId,
+//             type,
+//             title,
+//             message,
+//             data: data || {},
+//             priority: priority || 'medium',
+//             expiresAt
+//         }));
+//         const createdNotifications = await Notification.insertMany(notifications);
+//         return createdNotifications;
+//     } catch (error) {
+//         console.error('Error creating bulk notifications:', error);
+//         return [];
+//     }
+// };
 export { getNotifications, getNotificationById, markAsRead, markAsUnread, markAllAsRead, deleteNotification, getNotificationStats, createNotification, createBulkNotifications };

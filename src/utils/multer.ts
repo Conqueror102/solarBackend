@@ -1,12 +1,43 @@
 import multer from 'multer';
+import { ALLOWED_IMAGE_TYPES, MAX_IMAGE_SIZE } from './imageValidation.js';
 
-// Configure Multer for memory storage (no disk usage)
+// File filter function
+const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error(`Invalid file type. Only ${ALLOWED_IMAGE_TYPES.map(type => type.split('/')[1].toUpperCase()).join(', ')} are allowed.`));
+  }
+};
+
+// Configure Multer for memory storage
 const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 2 * 1024 * 1024, // 2MB limit
-        files: 5 // max 5 files
-    }
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_IMAGE_SIZE, // 2MB limit
+    files: 5 // max 5 files
+  },
+  fileFilter: fileFilter
+});
+
+// Single file upload (for brand logos)
+export const uploadSingle = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_IMAGE_SIZE,
+    files: 1
+  },
+  fileFilter: fileFilter
+});
+
+// Multiple files upload (for product images)
+export const uploadMultiple = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_IMAGE_SIZE,
+    files: 5
+  },
+  fileFilter: fileFilter
 });
 
 export default upload; 

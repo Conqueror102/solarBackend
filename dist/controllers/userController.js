@@ -39,7 +39,11 @@ const createUser = asyncHandler(async (req, res) => {
     }
     const user = await User.create({ name, email, password, role: newRole });
     // Notify admins about new user registration
-    await notifyNewUserRegistration(user._id.toString(), user.name, user.email);
+    await notifyNewUserRegistration({
+        userId: user._id.toString(),
+        userName: user.name,
+        userEmail: user.email
+    });
     res.status(201).json({
         _id: user._id,
         name: user.name,
@@ -420,4 +424,28 @@ const getCustomerProfile = asyncHandler(async (req, res) => {
         recentOrders
     });
 });
-export { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile, getAllCustomers };
+/**
+ * @desc    Bulk deactivate customer accounts
+ * @route   PATCH /api/users/customers/bulk-deactivate
+ * @access  Private/Admin/Superadmin
+ */
+const bulkDeactivateUsers = asyncHandler(async (req, res) => {
+    const { userIds } = req.body;
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        res.status(400);
+        throw new Error('User IDs must be provided as a non-empty array.');
+    }
+    const result = await User.updateMany({
+        _id: { $in: userIds },
+        role: 'user' // Ensure we only deactivate customers, not other roles
+    }, { $set: { isDeactivated: true } });
+    if (result.matchedCount === 0) {
+        res.status(404);
+        throw new Error('No matching customer accounts found for the provided IDs.');
+    }
+    res.status(200).json({
+        message: `${result.modifiedCount} customer(s) deactivated successfully.`,
+        modifiedCount: result.modifiedCount,
+    });
+});
+export { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile, getAllCustomers, bulkDeactivateUsers };

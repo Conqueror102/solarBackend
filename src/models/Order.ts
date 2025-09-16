@@ -31,6 +31,9 @@ export interface IOrder extends Document {
   status: string;
   shippingAddress: IAddress;
   billingAddress: IAddress;
+  paystackReference?: string | null;
+  amountAtPayment?: number | null;
+  currency?: 'NGN' | 'GHS' | 'USD';
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -80,8 +83,15 @@ const orderSchema = new Schema<IOrder>({
       'Cancelled'     // Order was cancelled
     ]
   },
+  paystackReference: { type: String, default: null },
+  currency: { type: String, default: "NGN" },
   shippingAddress: { type: addressSchema, required: true },
   billingAddress: { type: addressSchema, required: true },
 }, { timestamps: true });
+
+orderSchema.index(
+  { paystackReference: 1 },
+  { unique: true, partialFilterExpression: { paystackReference: { $type: 'string' } } }
+);
 
 export const Order: Model<IOrder> = mongoose.model<IOrder>('Order', orderSchema);

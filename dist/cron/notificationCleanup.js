@@ -21,7 +21,6 @@ export const startNotificationCleanupCron = () => {
             console.error('Error during notification cleanup:', error);
         }
     }, {
-        scheduled: true,
         timezone: 'UTC'
     });
     console.log('Notification cleanup cron job scheduled (daily at 2:00 AM UTC)');

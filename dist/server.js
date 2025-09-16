@@ -23,10 +23,14 @@ import cartRoutes from './routes/cartRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import webhookHandler from './routes/payments.routes.js';
 import { swaggerUi, swaggerDocs } from './utils/swagger.js';
 import { fileURLToPath } from 'url';
 import { startDailySalesReportCron } from './cron/dailySalesReport.js';
 import { startNotificationCleanupCron } from './cron/notificationCleanup.js';
+import { rawBodyParser } from './controllers/payments.controller.js';
+import paymentsRouter from "./routes/payments.routes.js";
+import transactionRoutes from "./routes/transactionRoutes.js";
 // Load environment variables
 dotenv.config();
 // Environment variable checks
@@ -89,6 +93,10 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use("/api/transactions", transactionRoutes);
+app.use("/paystack", paymentsRouter);
+// Webhook AFTER json parser, with raw body:
+app.post("/paystack/webhook", rawBodyParser, webhookHandler);
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Health check endpoint
