@@ -48,10 +48,7 @@ const requiredEnv = [
   'SMTP_PASS',
   'CLOUDINARY_CLOUD_NAME',
   'CLOUDINARY_API_KEY',
-  'CLOUDINARY_API_SECRET',
-  'STRIPE_SECRET_KEY',
-  'STRIPE_PUBLIC_KEY',
-  'JWT_EXPIRES_IN'
+  'CLOUDINARY_API_SECRET'
 ];
 const missingEnv = requiredEnv.filter((key) => !process.env[key]);
 if (missingEnv.length > 0) {
