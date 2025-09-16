@@ -30,7 +30,7 @@ import { swaggerUi, swaggerDocs } from './utils/swagger.js';
 import { fileURLToPath } from 'url';
 import { startDailySalesReportCron } from './cron/dailySalesReport.js';
 import { startNotificationCleanupCron } from './cron/notificationCleanup.js';
-import { rawBodyParser, paystackWebhook } from './controllers/payments.controller.js';
+import { rawBodyParser } from './controllers/payments.controller.js';
 import paymentsRouter from "./routes/payments.routes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import brandRoutes from './routes/brandRoutes.js';
@@ -116,7 +116,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/paystack", paymentsRouter);
 
 // Webhook AFTER json parser, with raw body:
-app.post("/paystack/webhook", rawBodyParser, paystackWebhook);
+app.post("/paystack/webhook", rawBodyParser, webhookHandler);
 
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
