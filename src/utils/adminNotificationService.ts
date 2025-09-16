@@ -8,7 +8,6 @@ import mongoose from 'mongoose';
 import { Notification, INotification } from '../models/Notification.js';
 import { User } from '../models/User.js';
 
-
 // Admin notification types
 export type AdminNotificationType = 
   | 'new_user_registration'

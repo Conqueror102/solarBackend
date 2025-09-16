@@ -33,6 +33,7 @@ import { startNotificationCleanupCron } from './cron/notificationCleanup.js';
 import { rawBodyParser, paystackWebhook } from './controllers/payments.controller.js';
 import paymentsRouter from "./routes/payments.routes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
+import brandRoutes from './routes/brandRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -102,6 +103,7 @@ if (process.env.NODE_ENV !== 'production') {
 // Mount routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/brands', brandRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/settings', settingsRoutes);
@@ -114,7 +116,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/paystack", paymentsRouter);
 
 // Webhook AFTER json parser, with raw body:
-app.post("/paystack/webhook", rawBodyParser, webhookHandler);
+app.post("/paystack/webhook", rawBodyParser, paystackWebhook);
 
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
