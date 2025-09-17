@@ -123,6 +123,13 @@ app.post("/paystack/webhook", rawBodyParser, webhookHandler);
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+app.get("/", (req, res) => {
+  res.json({
+    status: "success",
+    message: "API is running",
+  });
+});
+
 // Health check endpoint
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 
