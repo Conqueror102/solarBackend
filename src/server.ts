@@ -1,4 +1,3 @@
-
 /**
  * server.js - Entry point of the Solar E-commerce Backend
  * -------------------------------------
@@ -59,6 +58,9 @@ if (missingEnv.length > 0) {
 // Initialize Express app
 const app: Application = express();
 
+
+app.set('trust proxy', true);
+
 // Connect to MongoDB
 connectDB();
 
@@ -85,12 +87,13 @@ app.use(cors());
 const accessLogStream = fs.createWriteStream(path.join(logDirectory, 'access.log'), { flags: 'a' });
 app.use(morgan('combined', { stream: accessLogStream }));
 
-app.set('trust proxy', true);
-
-// Rate limiting
+// Rate limiting (now trust proxy is already set)
 const limiter = rateLimit({
     windowMs: 10 * 60 * 1000, // 10 minutes
     max: 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 app.use(limiter);
 
