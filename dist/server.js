@@ -44,10 +44,7 @@ const requiredEnv = [
     'SMTP_PASS',
     'CLOUDINARY_CLOUD_NAME',
     'CLOUDINARY_API_KEY',
-    'CLOUDINARY_API_SECRET',
-    'STRIPE_SECRET_KEY',
-    'STRIPE_PUBLIC_KEY',
-    'JWT_EXPIRES_IN'
+    'CLOUDINARY_API_SECRET'
 ];
 const missingEnv = requiredEnv.filter((key) => !process.env[key]);
 if (missingEnv.length > 0) {
@@ -56,6 +53,7 @@ if (missingEnv.length > 0) {
 }
 // Initialize Express app
 const app = express();
+app.set('trust proxy', true);
 // Connect to MongoDB
 connectDB();
 const __filename = fileURLToPath(import.meta.url);
@@ -75,10 +73,13 @@ app.use(cors());
 // Middleware: logging (Morgan)
 const accessLogStream = fs.createWriteStream(path.join(logDirectory, 'access.log'), { flags: 'a' });
 app.use(morgan('combined', { stream: accessLogStream }));
-// Rate limiting
+// Rate limiting (now trust proxy is already set)
 const limiter = rateLimit({
     windowMs: 10 * 60 * 1000, // 10 minutes
     max: 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 app.use(limiter);
 // Swagger documentation

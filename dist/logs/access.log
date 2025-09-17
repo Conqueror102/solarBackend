@@ -1,5 +1,0 @@
-::1 - - [16/Sep/2025:13:53:42 +0000] "POST /paystack/init HTTP/1.1" 400 30 "-" "PostmanRuntime/7.45.0"
-::1 - - [16/Sep/2025:14:03:09 +0000] "POST /paystack/init HTTP/1.1" 200 163 "-" "PostmanRuntime/7.45.0"
-::1 - - [16/Sep/2025:14:04:55 +0000] "GET /paystack/verify/wza856zhxi HTTP/1.1" 400 48 "-" "PostmanRuntime/7.45.0"
-::1 - - [16/Sep/2025:14:06:05 +0000] "GET /paystack/verify/wza856zhxi HTTP/1.1" 400 48 "-" "PostmanRuntime/7.45.0"
-::1 - - [16/Sep/2025:14:09:05 +0000] "GET /paystack/verify/wza856zhxi HTTP/1.1" 400 48 "-" "PostmanRuntime/7.45.0"

@@ -34,7 +34,6 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
     "path": "^0.12.7",
-    "stripe": "^11.18.0",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^4.6.3"
   },

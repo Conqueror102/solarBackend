@@ -59,7 +59,7 @@ if (missingEnv.length > 0) {
 const app: Application = express();
 
 
-app.set('trust proxy', true);
+app.set("trust proxy", 1);
 
 // Connect to MongoDB
 connectDB();
