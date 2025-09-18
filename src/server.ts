@@ -81,14 +81,27 @@ app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
 
 // Middleware: enable CORS
+const allowedOrigins = [
+  "http://localhost:8080",          // local dev
+  "http://localhost:5173",          // local dev
+  "https://your-frontend.onrender.com", // deployed frontend
+];
+
 app.use(
   cors({
-    origin: "http://localhost:8080", // your frontend URL
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"], // allow JWT token
-    credentials: true, // allow cookies/authorization headers
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
   })
 );
+
 
 // Middleware: logging (Morgan)
 const accessLogStream = fs.createWriteStream(path.join(logDirectory, 'access.log'), { flags: 'a' });

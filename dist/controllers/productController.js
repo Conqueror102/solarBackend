@@ -35,6 +35,7 @@ const createProduct = asyncHandler(async (req, res) => {
         description: req.body.description,
         price: req.body.price ? parseFloat(req.body.price) : undefined,
         category: req.body.category,
+        brand: req.body.brand, // Added brand
         stock: req.body.stock ? parseInt(req.body.stock) : 0
     };
     const { error } = createProductSchema.validate(productData);
@@ -42,7 +43,7 @@ const createProduct = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error(error.details[0].message);
     }
-    const { name, description, price, category, stock } = productData;
+    const { name, description, price, category, brand, stock } = productData;
     let images = [];
     if (req.files && Array.isArray(req.files)) {
         // Validate all files at once
@@ -62,6 +63,7 @@ const createProduct = asyncHandler(async (req, res) => {
         description,
         price,
         category: new mongoose.Types.ObjectId(category),
+        brand: new mongoose.Types.ObjectId(brand), // Added brand
         stock,
         images,
     });
@@ -71,75 +73,78 @@ const createProduct = asyncHandler(async (req, res) => {
     res.status(201).json(product);
 });
 const updateProduct = asyncHandler(async (req, res) => {
-    // For multipart/form-data, fields are in req.body as strings
     const productData = {
         name: req.body.name,
         description: req.body.description,
         price: req.body.price ? parseFloat(req.body.price) : undefined,
         category: req.body.category,
-        stock: req.body.stock ? parseInt(req.body.stock) : undefined
+        brand: req.body.brand,
+        stock: req.body.stock ? parseInt(req.body.stock) : undefined,
     };
     const { error } = updateProductSchema.validate(productData);
     if (error) {
         res.status(400);
         throw new Error(error.details[0].message);
     }
-    const { name, description, price, category, stock } = productData;
+    const { name, description, price, category, brand, stock } = productData;
     const product = await Product.findById(req.params.id);
-    if (product) {
-        product.name = name || product.name;
-        product.description = description || product.description;
-        product.price = price || product.price;
-        product.category = category ? new mongoose.Types.ObjectId(category) : product.category;
-        product.stock = stock !== undefined ? stock : product.stock;
-        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-            // Validate all files at once
-            const validation = validateImageFiles(req.files);
-            if (!validation.isValid) {
-                res.status(400);
-                throw new Error(validation.error);
-            }
-            let images = [];
-            for (const file of req.files) {
-                const result = await uploadToCloudinary(file.buffer, file.mimetype);
-                images.push(result.secure_url);
-            }
-            product.images = images;
-        }
-        // Track changes for admin notification
-        const changes = [];
-        if (name && name !== product.name)
-            changes.push('name');
-        if (description && description !== product.description)
-            changes.push('description');
-        if (price && price !== product.price)
-            changes.push('price');
-        if (category && category !== product.category)
-            changes.push('category');
-        if (stock !== undefined && stock !== product.stock)
-            changes.push('stock');
-        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-            changes.push('images');
-        }
-        const updatedProduct = await product.save();
-        // Notify admins about product update
-        if (changes.length > 0) {
-            const updater = req.user;
-            await notifyProductUpdated(updatedProduct._id.toString(), updatedProduct.name, updater?.name || 'System', changes);
-        }
-        // Check for low stock alerts
-        if (updatedProduct.stock <= 5 && updatedProduct.stock > 0) {
-            await notifyLowStockAlert(updatedProduct._id.toString(), updatedProduct.name, updatedProduct.stock, 5);
-        }
-        else if (updatedProduct.stock === 0) {
-            await notifyOutOfStockAlert(updatedProduct._id.toString(), updatedProduct.name);
-        }
-        res.json(updatedProduct);
-    }
-    else {
+    if (!product) {
         res.status(404);
-        throw new Error('Product not found');
+        throw new Error("Product not found");
     }
+    const changes = [];
+    if (name && name !== product.name) {
+        product.name = name;
+        changes.push("name");
+    }
+    if (description && description !== product.description) {
+        product.description = description;
+        changes.push("description");
+    }
+    if (price && price !== product.price) {
+        product.price = price;
+        changes.push("price");
+    }
+    if (category && category.toString() !== product.category.toString()) {
+        product.category = new mongoose.Types.ObjectId(category);
+        changes.push("category");
+    }
+    if (brand && brand.toString() !== product.brand.toString()) {
+        product.brand = new mongoose.Types.ObjectId(brand); // FIXED: cast to ObjectId
+        changes.push("brand");
+    }
+    if (stock !== undefined && stock !== product.stock) {
+        product.stock = stock;
+        changes.push("stock");
+    }
+    if (req.files &&
+        Array.isArray(req.files) &&
+        req.files.length > 0) {
+        const validation = validateImageFiles(req.files);
+        if (!validation.isValid) {
+            res.status(400);
+            throw new Error(validation.error);
+        }
+        const images = [];
+        for (const file of req.files) {
+            const result = await uploadToCloudinary(file.buffer, file.mimetype);
+            images.push(result.secure_url);
+        }
+        product.images = images;
+        changes.push("images");
+    }
+    const updatedProduct = await product.save();
+    if (changes.length > 0) {
+        const updater = req.user;
+        await notifyProductUpdated(updatedProduct._id.toString(), updatedProduct.name, updater?.name || "System", changes);
+    }
+    if (updatedProduct.stock <= 5 && updatedProduct.stock > 0) {
+        await notifyLowStockAlert(updatedProduct._id.toString(), updatedProduct.name, updatedProduct.stock, 5);
+    }
+    else if (updatedProduct.stock === 0) {
+        await notifyOutOfStockAlert(updatedProduct._id.toString(), updatedProduct.name);
+    }
+    res.json(updatedProduct);
 });
 const deleteProduct = asyncHandler(async (req, res) => {
     const product = await Product.findById(req.params.id);
