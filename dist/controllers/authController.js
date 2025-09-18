@@ -1,5 +1,5 @@
 /**
- * authCimport { generateAccessToken,
+ * authCimport { generatetoken,
     generateRefreshToken,
     verifyRefreshToken,
     rotateRefreshToken
@@ -13,7 +13,7 @@ import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { sendCustomEmail } from '../utils/email.js';
 import { registerSchema, loginSchema } from '../validators/auth.js';
-import { generateAccessToken
+import { generatetoken
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
 // generateRefreshToken, 
 // verifyRefreshToken,
@@ -95,7 +95,7 @@ const loginUser = asyncHandler(async (req, res) => {
     }
     // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
     // Generate tokens
-    const accessToken = generateAccessToken(user._id);
+    const token = generatetoken(user._id);
     // const refreshToken = await generateRefreshToken(user._id, req.ip);
     // Set refresh token in HTTP-only cookie
     // res.cookie('refreshToken', refreshToken, {
@@ -110,7 +110,7 @@ const loginUser = asyncHandler(async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        accessToken,
+        token,
     });
 });
 const getUserProfile = asyncHandler(async (req, res) => {
@@ -233,7 +233,7 @@ const verifyEmail = asyncHandler(async (req, res) => {
     res.json({ message: 'Email verified successfully. You can now log in.' });
 });
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
-// const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
+// const refreshtoken = asyncHandler(async (req: Request, res: Response) => {
 //     const refreshToken = req.cookies.refreshToken;
 //     if (!refreshToken) {
 //         res.status(401);
@@ -245,7 +245,7 @@ const verifyEmail = asyncHandler(async (req, res) => {
 //         throw new Error('Invalid or expired refresh token');
 //     }
 //     // Generate new tokens
-//     const newAccessToken = generateAccessToken(userId);
+//     const newtoken = generatetoken(userId);
 //     const newRefreshToken = await rotateRefreshToken(userId, refreshToken, req.ip);
 //     // Set new refresh token in HTTP-only cookie
 //     res.cookie('refreshToken', newRefreshToken, {
@@ -254,7 +254,7 @@ const verifyEmail = asyncHandler(async (req, res) => {
 //         sameSite: 'strict',
 //         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
 //     });
-//     res.json({ accessToken: newAccessToken });
+//     res.json({ token: newtoken });
 // });
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
 // Update logout to handle refresh tokens
@@ -270,5 +270,5 @@ const logoutUser = asyncHandler(async (req, res) => {
     res.json({ message: 'Logged out successfully' });
 });
 export { registerUser, loginUser, getUserProfile, logoutUser, getCurrentUser, updateUserProfile, forgotPassword, resetPassword, changePassword, verifyEmail
-// TEMPORARILY DISABLED: refreshAccessToken 
+// TEMPORARILY DISABLED: refreshtoken 
  };

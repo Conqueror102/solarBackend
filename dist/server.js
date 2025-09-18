@@ -53,7 +53,7 @@ if (missingEnv.length > 0) {
 }
 // Initialize Express app
 const app = express();
-app.set('trust proxy', true);
+app.set("trust proxy", 1);
 // Connect to MongoDB
 connectDB();
 const __filename = fileURLToPath(import.meta.url);
@@ -69,7 +69,12 @@ app.use(express.urlencoded({ extended: true }));
 // Middleware: security headers
 app.use(helmet());
 // Middleware: enable CORS
-app.use(cors());
+app.use(cors({
+    origin: "http://localhost:8080", // your frontend URL
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"], // allow JWT token
+    credentials: true, // allow cookies/authorization headers
+}));
 // Middleware: logging (Morgan)
 const accessLogStream = fs.createWriteStream(path.join(logDirectory, 'access.log'), { flags: 'a' });
 app.use(morgan('combined', { stream: accessLogStream }));
@@ -103,6 +108,12 @@ app.use("/paystack", paymentsRouter);
 app.post("/paystack/webhook", rawBodyParser, webhookHandler);
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.get("/", (req, res) => {
+    res.json({
+        status: "success",
+        message: "API is running",
+    });
+});
 // Health check endpoint
 app.get('/healthz', (req, res) => res.status(200).send('OK'));
 // Optional: fallback error handler

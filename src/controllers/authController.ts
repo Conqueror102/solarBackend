@@ -1,6 +1,6 @@
 
 /**
- * authCimport { generateAccessToken, 
+ * authCimport { generatetoken, 
     generateRefreshToken, 
     verifyRefreshToken,
     rotateRefreshToken 
@@ -16,7 +16,7 @@ import crypto from 'crypto';
 import { sendCustomEmail } from '../utils/email.js';
 import { registerSchema, loginSchema } from '../validators/auth.js';
 import { 
-    generateAccessToken
+    generatetoken
     // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
     // generateRefreshToken, 
     // verifyRefreshToken,
@@ -116,7 +116,7 @@ const loginUser = asyncHandler(async (req: Request, res: Response) => {
 
     // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
     // Generate tokens
-    const accessToken = generateAccessToken(user._id);
+    const token = generatetoken(user._id);
     // const refreshToken = await generateRefreshToken(user._id, req.ip);
 
     // Set refresh token in HTTP-only cookie
@@ -133,7 +133,7 @@ const loginUser = asyncHandler(async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        accessToken,
+        token,
     });
 });
 
@@ -265,7 +265,7 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
 });
 
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
-// const refreshAccessToken = asyncHandler(async (req: Request, res: Response) => {
+// const refreshtoken = asyncHandler(async (req: Request, res: Response) => {
 //     const refreshToken = req.cookies.refreshToken;
     
 //     if (!refreshToken) {
@@ -280,7 +280,7 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
 //     }
 
 //     // Generate new tokens
-//     const newAccessToken = generateAccessToken(userId);
+//     const newtoken = generatetoken(userId);
 //     const newRefreshToken = await rotateRefreshToken(userId, refreshToken, req.ip);
 
 //     // Set new refresh token in HTTP-only cookie
@@ -291,7 +291,7 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
 //         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
 //     });
 
-//     res.json({ accessToken: newAccessToken });
+//     res.json({ token: newtoken });
 // });
 
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
@@ -321,5 +321,5 @@ export {
     resetPassword, 
     changePassword, 
     verifyEmail
-    // TEMPORARILY DISABLED: refreshAccessToken 
+    // TEMPORARILY DISABLED: refreshtoken 
 };

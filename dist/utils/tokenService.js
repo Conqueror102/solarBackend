@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 // Read environment variables once at module load time
 export const JWT_SECRET = process.env.JWT_SECRET || "defaultsecret";
 ;
-export const generateAccessToken = (userId) => {
+export const generatetoken = (userId) => {
     const options = {
         expiresIn: "7d",
     };
@@ -24,8 +24,14 @@ export const generateAccessToken = (userId) => {
 //   await user.addRefreshToken(refreshToken, expiresAt, ip);
 //   return refreshToken;
 // };
-export const verifyAccessToken = (token) => {
-    return jwt.verify(token, JWT_SECRET);
+export const verifytoken = (token) => {
+    try {
+        return jwt.verify(token, JWT_SECRET);
+    }
+    catch (error) {
+        console.error("JWT verification failed:", error.message);
+        return null;
+    }
 };
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
 // export const revokeRefreshToken = async (userId: string, token: string, ip?: string): Promise<void> => {

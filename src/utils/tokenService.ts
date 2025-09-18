@@ -15,7 +15,7 @@ export interface TokenPayload {
 }
 
 
-export const generateAccessToken = (userId: string): string => {
+export const generatetoken = (userId: string): string => {
   const options: SignOptions = {
     expiresIn: "7d",
   };
@@ -43,9 +43,16 @@ export const generateAccessToken = (userId: string): string => {
 //   return refreshToken;
 // };
 
-export const verifyAccessToken = (token: string): TokenPayload => {
-  return jwt.verify(token, JWT_SECRET) as TokenPayload;
+
+export const verifytoken = (token: string): TokenPayload | null => {
+  try {
+    return jwt.verify(token, JWT_SECRET) as TokenPayload;
+  } catch (error:any) {
+    console.error("JWT verification failed:", error.message);
+    return null;
+  }
 };
+
 
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
 // export const revokeRefreshToken = async (userId: string, token: string, ip?: string): Promise<void> => {

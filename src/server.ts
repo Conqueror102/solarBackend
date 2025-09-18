@@ -81,7 +81,14 @@ app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
 
 // Middleware: enable CORS
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:8080", // your frontend URL
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"], // allow JWT token
+    credentials: true, // allow cookies/authorization headers
+  })
+);
 
 // Middleware: logging (Morgan)
 const accessLogStream = fs.createWriteStream(path.join(logDirectory, 'access.log'), { flags: 'a' });
