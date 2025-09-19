@@ -229,29 +229,42 @@ const getBrandProducts = asyncHandler(async (req: Request, res: Response) => {
 
 const getBrandStats = asyncHandler(async (req: Request, res: Response) => {
   const brandId = req.params.id;
-  
+
   const [
     totalProducts,
     activeProducts,
     totalStock,
-    lowStockProducts
+    lowStockProducts,
+    outOfStockProducts
   ] = await Promise.all([
+    // Total products for the brand
     Product.countDocuments({ brand: brandId }),
+
+    // Active = products with stock > 0
     Product.countDocuments({ brand: brandId, stock: { $gt: 0 } }),
+
+    // Total stock (sum of stock across all products)
     Product.aggregate([
       { $match: { brand: new mongoose.Types.ObjectId(brandId) } },
       { $group: { _id: null, total: { $sum: '$stock' } } }
     ]),
-    Product.countDocuments({ brand: brandId, stock: { $lte: 10, $gt: 0 } })
+
+    // Low stock = products with stock between 1 and 10
+    Product.countDocuments({ brand: brandId, stock: { $lte: 10, $gt: 0 } }),
+
+    // Out of stock = products with stock = 0
+    Product.countDocuments({ brand: brandId, stock: 0 })
   ]);
-  
+
   res.json({
     totalProducts,
     activeProducts,
     totalStock: totalStock[0]?.total || 0,
-    lowStockProducts
+    lowStockProducts,
+    outOfStockProducts
   });
 });
+
 
 const bulkUpdateBrands = asyncHandler(async (req: Request, res: Response) => {
   const { error } = bulkUpdateBrandSchema.validate(req.body);

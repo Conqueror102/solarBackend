@@ -83,7 +83,8 @@ app.use(helmet());
 // Middleware: enable CORS
 const allowedOrigins = [
   "http://localhost:8080",          // local dev
-  "http://localhost:5173",          // local dev
+  "http://localhost:3000",          // local dev
+  "http://localhost:3001",          // local dev
   "https://your-frontend.onrender.com", // deployed frontend
 ];
 
