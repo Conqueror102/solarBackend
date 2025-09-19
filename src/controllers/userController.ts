@@ -456,6 +456,16 @@ const bulkDeactivateUsers = asyncHandler(async (req: Request, res: Response) => 
     });
 });
 
+const getUserOrders = asyncHandler(async (req: Request, res: Response) => {
+    const orders = await Order.find({ user: req.params.id });
+    if (orders) {
+        res.json(orders);
+    } else {
+        res.status(404);
+        throw new Error('Orders not found for this user');
+    }
+});
+
 export {
     getUsers,
     getUserById,
@@ -475,5 +485,6 @@ export {
     sendEmailToCustomer,
     getCustomerProfile,
     getAllCustomers,
-    bulkDeactivateUsers
+    bulkDeactivateUsers,
+    getUserOrders
 }; 

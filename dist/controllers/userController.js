@@ -444,4 +444,14 @@ const bulkDeactivateUsers = asyncHandler(async (req, res) => {
         modifiedCount: result.modifiedCount,
     });
 });
-export { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile, getAllCustomers, bulkDeactivateUsers };
+const getUserOrders = asyncHandler(async (req, res) => {
+    const orders = await Order.find({ user: req.params.id });
+    if (orders) {
+        res.json(orders);
+    }
+    else {
+        res.status(404);
+        throw new Error('Orders not found for this user');
+    }
+});
+export { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile, getAllCustomers, bulkDeactivateUsers, getUserOrders };

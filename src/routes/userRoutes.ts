@@ -20,7 +20,8 @@ import {
     sendEmailToCustomer,
     getCustomerProfile,
     getAllCustomers,
-    bulkDeactivateUsers
+    bulkDeactivateUsers,
+    getUserOrders
 } from '../controllers/userController.js';
 
 const router = Router();
@@ -45,6 +46,8 @@ router.route('/:id')
     .get(protect, requireRoles(['admin', 'superadmin']), getUserById)
     .put(protect, requireRole('superadmin'), updateUser)
     .delete(protect, requireRole('superadmin'), deleteUser);
+
+router.get('/:id/orders', protect, requireRoles(['admin', 'superadmin']), getUserOrders);
 
 router.route('/settings')
     .get(protect, getUserSettings)

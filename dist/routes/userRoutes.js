@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { protect } from '../middlewares/authMiddleware.js';
 import { requireRole, requireRoles } from '../middlewares/roleMiddleware.js';
-import { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile, getAllCustomers, bulkDeactivateUsers } from '../controllers/userController.js';
+import { getUsers, getUserById, createUser, updateUser, deleteUser, getUserSettings, updateUserSettings, getAddresses, addAddress, updateAddress, deleteAddress, setDefaultAddress, deactivateUser, reactivateUser, getCustomerAnalytics, sendEmailToCustomer, getCustomerProfile, getAllCustomers, bulkDeactivateUsers, getUserOrders } from '../controllers/userController.js';
 const router = Router();
 // Only superadmin can create/update/delete admins, but admin/superadmin can manage users
 router.route('/')
@@ -20,6 +20,7 @@ router.route('/:id')
     .get(protect, requireRoles(['admin', 'superadmin']), getUserById)
     .put(protect, requireRole('superadmin'), updateUser)
     .delete(protect, requireRole('superadmin'), deleteUser);
+router.get('/:id/orders', protect, requireRoles(['admin', 'superadmin']), getUserOrders);
 router.route('/settings')
     .get(protect, getUserSettings)
     .put(protect, updateUserSettings);
