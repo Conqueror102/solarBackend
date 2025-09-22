@@ -14,12 +14,13 @@ import { createProductSchema, updateProductSchema } from '../validators/product.
 import uploadToCloudinary from '../utils/cloudinaryUpload.js';
 import { notifyProductAdded, notifyProductUpdated, notifyLowStockAlert, notifyOutOfStockAlert } from '../utils/adminNotificationService.js';
 import { validateImageFiles } from '../utils/imageValidation.js'; // Import validation utility
+import path from 'path';
 
 // const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 // const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
 
 const getProducts = asyncHandler(async (req: Request, res: Response) => {
-    const products = await Product.find({});
+    const products = await Product.find({}).populate({path: "brand", select:"name _id"});
     res.json(products);
 });
 
