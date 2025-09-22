@@ -136,10 +136,10 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use("/api/transactions", transactionRoutes);
 
-app.use("/paystack", paymentsRouter);
+app.use("/api/paystack", paymentsRouter);
 
 // Webhook AFTER json parser, with raw body:
-app.post("/paystack/webhook", rawBodyParser, webhookHandler);
+app.post("/api/paystack/webhook", rawBodyParser, webhookHandler);
 
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
