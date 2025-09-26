@@ -44,7 +44,7 @@ export async function initPaystackPayment(req: Request, res: Response) {
       return res.status(400).json({ error: "Order already paid" });
 
     // Freeze amount & currency
-    order.currency = order.currency || "NGN";
+    order.currency = order.currency || "NGN";   
     if (order.amountAtPayment == null) {
       order.amountAtPayment = order.totalAmount;
     }

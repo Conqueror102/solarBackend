@@ -1,8 +1,9 @@
+// File: /utils/email.js
+
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 dotenv.config();
 
-// Read environment variables once at module load time
 const NODE_ENV = process.env.NODE_ENV;
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
@@ -10,59 +11,23 @@ const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = process.env.SMTP_PORT;
 const SMTP_SECURE = process.env.SMTP_SECURE;
 
-// Email configuration with better error handling
 const createTransporter = () => {
-  const isProduction = NODE_ENV === 'production';
-  
-  // Gmail configuration with improved settings
-  const gmailConfig = {
-    service: 'gmail',
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    },
-    // Connection settings to prevent timeouts
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
-    rateLimit: 14, // Gmail limit
-    // Timeout settings
-    connectionTimeout: 60000, // 60 seconds
-    greetingTimeout: 30000,   // 30 seconds
-    socketTimeout: 60000,     // 60 seconds
-    // TLS settings
-    secure: true,
-    tls: {
-      rejectUnauthorized: false
-    }
-  };
-
-  // Alternative: Custom SMTP configuration
-  const customSMTPConfig = {
+  const config = {
     host: SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(SMTP_PORT || '587'),
-    secure: SMTP_SECURE === 'true', // true for 465, false for other ports
+    secure: SMTP_SECURE === 'true',
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS
     },
-    // Connection settings
     pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
-    // Timeout settings
-    connectionTimeout: 60000,
-    greetingTimeout: 30000,
-    socketTimeout: 60000,
-    // TLS settings
+    connectionTimeout: 10000,
+    greetingTimeout: 5000,
+    socketTimeout: 10000,
     tls: {
       rejectUnauthorized: false
     }
   };
-
-  // Use custom SMTP if host is specified, otherwise use Gmail
-  const config = SMTP_HOST ? customSMTPConfig : gmailConfig;
-  
   return nodemailer.createTransport(config);
 };
 
@@ -88,100 +53,74 @@ const orderStatusMessages: Record<string, string> = {
     'Cancelled': 'Your order has been cancelled. If you have questions, please contact support.'
 };
 
-const paymentStatusMessages: Record<string, string> = {
-    'Pending': 'Your payment is pending.',
-    'Processing': 'Your payment is being processed.',
-    'Completed': 'Your payment has been successfully completed.',
-    'Failed': 'Your payment attempt failed. Please try again.',
-    'Refunded': 'Your payment has been refunded.'
-};
+function sendMail(to: string, subject: string, html: string) {
+    const mailOptions = {
+        from: `"Solar Store" <${SMTP_USER}>`,
+        to,
+        subject,
+        html,
+    };
+    
+    transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+            // --- FIX: Safely handle the shape of the Nodemailer error object ---
+            const logError: { to: string, subject: string, message: string, code?: string } = {
+                to,
+                subject,
+                message: error.message,
+            };
 
-async function sendMail(to: string, subject: string, html: string) {
-    try {
-        const mailOptions = {
-            from: `"Solar Store" <${SMTP_USER}>`,
-            to,
-            subject,
-            html,
-        };
-        
-        const result = await transporter.sendMail(mailOptions);
-        console.log(`Email sent successfully to ${to}: ${result.messageId}`);
-        return result;
-    } catch (error: any) {
-        console.error('Email sending failed:', {
-            to,
-            subject,
-            error: error.message,
-            code: error.code,
-            command: error.command
-        });
-        
-        // Don't throw error in production to prevent app crashes
-        if (NODE_ENV === 'production') {
-            console.error('Email failed but continuing...');
-            return null;
-        } else {
-            throw error;
+            // Check if the 'code' property exists on the error before trying to access it
+            if (error && typeof error === 'object' && 'code' in error) {
+                logError.code = (error as { code: string }).code;
+            }
+
+            console.error('Email sending failed:', logError);
+            return;
         }
-    }
+        console.log(`Email sent successfully to ${to}: ${info.messageId}`);
+    });
 }
 
-export async function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
-    const html = `
-        <h2>Thank you for your order, ${user.name || ''}!</h2>
-        <p>Your order <b>#${order._id.slice(-5)}</b> has been placed successfully.</p>
-        <p>Total Amount: <b>$${order.totalAmount.toFixed(2)}</b></p>
-        <p>Status: <b>${order.status}</b></p>
-    `;
-    await sendMail(user.email, 'Order Confirmation', html);
+export function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
+    const html = `<h2>Thank you for your order, ${user.name || ''}!</h2><p>Your order <b>#${order._id.slice(-5)}</b> has been placed successfully.</p><p>Total Amount: <b>$${order.totalAmount.toFixed(2)}</b></p><p>Status: <b>${order.status}</b></p>`;
+    sendMail(user.email, 'Order Confirmation', html);
 }
 
-export async function sendOrderStatusUpdateEmail(user: UserInfo, order: OrderInfo) {
+export function sendOrderStatusUpdateEmail(user: UserInfo, order: OrderInfo) {
     const statusMsg = orderStatusMessages[order.status] || `Your order status is now: ${order.status}`;
-    const html = `
-        <h2>Order Status Update</h2>
-        <p>Order <b>#${order._id.slice(-5)}</b> is now <b>${order.status}</b>.</p>
-        <p>${statusMsg}</p>
-    `;
-    await sendMail(user.email, 'Order Status Updated', html);
+    const html = `<h2>Order Status Update</h2><p>Order <b>#${order._id.slice(-5)}</b> is now <b>${order.status}</b>.</p><p>${statusMsg}</p>`;
+    sendMail(user.email, 'Order Status Updated', html);
 }
 
-export async function sendLowStockEmail(adminEmails: string[], lowStockProducts: { name: string; stock: number; }[]) {
+export function sendLowStockEmail(adminEmails: string[], lowStockProducts: { name: string; stock: number; }[]) {
     const productList = lowStockProducts.map(p => `<li>${p.name}: <b>${p.stock}</b> left</li>`).join('');
-    const html = `
-        <h2>Low Stock Alert</h2>
-        <p>The following products are low in stock:</p>
-        <ul>${productList}</ul>
-    `;
+    const html = `<h2>Low Stock Alert</h2><p>The following products are low in stock:</p><ul>${productList}</ul>`;
     for (const email of adminEmails) {
-        await sendMail(email, 'Low Stock Alert', html);
+        sendMail(email, 'Low Stock Alert', html);
     }
 }
 
-export async function sendCustomEmail(to: string | string[], subject: string, html: string) {
-    if (Array.isArray(to)) {
-        for (const email of to) {
-            await sendMail(email, subject, html);
-        }
-    } else {
-        await sendMail(to, subject, html);
+export function sendCustomEmail(to: string | string[], subject: string, html: string) {
+    const recipients = Array.isArray(to) ? to : [to];
+    for (const email of recipients) {
+        sendMail(email, subject, html);
     }
 }
 
-export async function sendDailySalesReportEmail(to: string[], html: string) {
+export function sendDailySalesReportEmail(to: string[], html: string) {
     for (const email of to) {
-        await sendMail(email, 'Daily Sales Report', html);
+        sendMail(email, 'Daily Sales Report', html);
     }
 }
 
-// Verify SMTP connection with better error handling
 export const verifySMTPConnection = async (): Promise<boolean> => {
     try {
         await transporter.verify();
         console.log('✅ SMTP connection verified successfully');
         return true;
     } catch (error: any) {
+        // This 'any' is acceptable here for the detailed console log
         console.error('❌ SMTP connection failed:', {
             message: error.message,
             code: error.code,
@@ -190,18 +129,219 @@ export const verifySMTPConnection = async (): Promise<boolean> => {
             port: SMTP_PORT || '587',
             user: SMTP_USER
         });
-        
-        // Provide helpful troubleshooting tips
-        console.error('\n🔧 Troubleshooting tips:');
-        console.error('1. Check your SMTP credentials in .env file');
-        console.error('2. Ensure SMTP_USER and SMTP_PASS are correct');
-        console.error('3. For Gmail, use App Password instead of regular password');
-        console.error('4. Check if your email provider allows SMTP access');
-        console.error('5. Try different SMTP settings (port 587 vs 465)');
-        
+        console.error('\n🔧 Troubleshooting tips:\n1. Check your SMTP credentials in .env file\n2. For Gmail, use an App Password\n3. Check if your provider allows SMTP access');
         return false;
     }
 };
 
-// Initialize SMTP connection on startup
-verifySMTPConnection(); 
+verifySMTPConnection();
+
+
+
+// import nodemailer from 'nodemailer';
+// import dotenv from 'dotenv';
+// dotenv.config();
+
+// // Read environment variables once at module load time
+// const NODE_ENV = process.env.NODE_ENV;
+// const SMTP_USER = process.env.SMTP_USER;
+// const SMTP_PASS = process.env.SMTP_PASS;
+// const SMTP_HOST = process.env.SMTP_HOST;
+// const SMTP_PORT = process.env.SMTP_PORT;
+// const SMTP_SECURE = process.env.SMTP_SECURE;
+
+// // Email configuration with better error handling
+// const createTransporter = () => {
+//   const isProduction = NODE_ENV === 'production';
+  
+//   // Gmail configuration with improved settings
+//   const gmailConfig = {
+//     service: 'gmail',
+//     auth: {
+//       user: SMTP_USER,
+//       pass: SMTP_PASS
+//     },
+//     // Connection settings to prevent timeouts
+//     pool: true,
+//     maxConnections: 5,
+//     maxMessages: 100,
+//     rateLimit: 14, // Gmail limit
+//     // Timeout settings
+//     connectionTimeout: 60000, // 60 seconds
+//     greetingTimeout: 30000,   // 30 seconds
+//     socketTimeout: 60000,     // 60 seconds
+//     // TLS settings
+//     secure: true,
+//     tls: {
+//       rejectUnauthorized: false
+//     }
+//   };
+
+//   // Alternative: Custom SMTP configuration
+//   const customSMTPConfig = {
+//     host: SMTP_HOST || 'smtp.gmail.com',
+//     port: parseInt(SMTP_PORT || '587'),
+//     secure: SMTP_SECURE === 'true', // true for 465, false for other ports
+//     auth: {
+//       user: SMTP_USER,
+//       pass: SMTP_PASS
+//     },
+//     // Connection settings
+//     pool: true,
+//     maxConnections: 5,
+//     maxMessages: 100,
+//     // Timeout settings
+//     connectionTimeout: 60000,
+//     greetingTimeout: 30000,
+//     socketTimeout: 60000,
+//     // TLS settings
+//     tls: {
+//       rejectUnauthorized: false
+//     }
+//   };
+
+//   // Use custom SMTP if host is specified, otherwise use Gmail
+//   const config = SMTP_HOST ? customSMTPConfig : gmailConfig;
+  
+//   return nodemailer.createTransport(config);
+// };
+
+// const transporter = createTransporter();
+
+// interface UserInfo {
+//     email: string;
+//     name?: string;
+// }
+
+// interface OrderInfo {
+//     _id: string;
+//     totalAmount: number;
+//     status: string;
+//     paymentStatus?: string;
+// }
+
+// const orderStatusMessages: Record<string, string> = {
+//     'New': 'Your order has been received.',
+//     'Processing': 'Your order is currently being processed.',
+//     'Shipped': 'Good news! Your order has been shipped.',
+//     'Delivered': 'Your order has been delivered. Thank you for shopping with us!',
+//     'Cancelled': 'Your order has been cancelled. If you have questions, please contact support.'
+// };
+
+// const paymentStatusMessages: Record<string, string> = {
+//     'Pending': 'Your payment is pending.',
+//     'Processing': 'Your payment is being processed.',
+//     'Completed': 'Your payment has been successfully completed.',
+//     'Failed': 'Your payment attempt failed. Please try again.',
+//     'Refunded': 'Your payment has been refunded.'
+// };
+
+// async function sendMail(to: string, subject: string, html: string) {
+//     try {
+//         const mailOptions = {
+//             from: `"Solar Store" <${SMTP_USER}>`,
+//             to,
+//             subject,
+//             html,
+//         };
+        
+//         const result = await transporter.sendMail(mailOptions);
+//         console.log(`Email sent successfully to ${to}: ${result.messageId}`);
+//         return result;
+//     } catch (error: any) {
+//         console.error('Email sending failed:', {
+//             to,
+//             subject,
+//             error: error.message,
+//             code: error.code,
+//             command: error.command
+//         });
+        
+//         // Don't throw error in production to prevent app crashes
+//         if (NODE_ENV === 'production') {
+//             console.error('Email failed but continuing...');
+//             return null;
+//         } else {
+//             throw error;
+//         }
+//     }
+// }
+
+// export async function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
+//     const html = `
+//         <h2>Thank you for your order, ${user.name || ''}!</h2>
+//         <p>Your order <b>#${order._id.slice(-5)}</b> has been placed successfully.</p>
+//         <p>Total Amount: <b>$${order.totalAmount.toFixed(2)}</b></p>
+//         <p>Status: <b>${order.status}</b></p>
+//     `;
+//     await sendMail(user.email, 'Order Confirmation', html);
+// }
+
+// export async function sendOrderStatusUpdateEmail(user: UserInfo, order: OrderInfo) {
+//     const statusMsg = orderStatusMessages[order.status] || `Your order status is now: ${order.status}`;
+//     const html = `
+//         <h2>Order Status Update</h2>
+//         <p>Order <b>#${order._id.slice(-5)}</b> is now <b>${order.status}</b>.</p>
+//         <p>${statusMsg}</p>
+//     `;
+//     await sendMail(user.email, 'Order Status Updated', html);
+// }
+
+// export async function sendLowStockEmail(adminEmails: string[], lowStockProducts: { name: string; stock: number; }[]) {
+//     const productList = lowStockProducts.map(p => `<li>${p.name}: <b>${p.stock}</b> left</li>`).join('');
+//     const html = `
+//         <h2>Low Stock Alert</h2>
+//         <p>The following products are low in stock:</p>
+//         <ul>${productList}</ul>
+//     `;
+//     for (const email of adminEmails) {
+//         await sendMail(email, 'Low Stock Alert', html);
+//     }
+// }
+
+// export async function sendCustomEmail(to: string | string[], subject: string, html: string) {
+//     if (Array.isArray(to)) {
+//         for (const email of to) {
+//             await sendMail(email, subject, html);
+//         }
+//     } else {
+//         await sendMail(to, subject, html);
+//     }
+// }
+
+// export async function sendDailySalesReportEmail(to: string[], html: string) {
+//     for (const email of to) {
+//         await sendMail(email, 'Daily Sales Report', html);
+//     }
+// }
+
+// // Verify SMTP connection with better error handling
+// export const verifySMTPConnection = async (): Promise<boolean> => {
+//     try {
+//         await transporter.verify();
+//         console.log('✅ SMTP connection verified successfully');
+//         return true;
+//     } catch (error: any) {
+//         console.error('❌ SMTP connection failed:', {
+//             message: error.message,
+//             code: error.code,
+//             command: error.command,
+//             host: SMTP_HOST || 'smtp.gmail.com',
+//             port: SMTP_PORT || '587',
+//             user: SMTP_USER
+//         });
+        
+//         // Provide helpful troubleshooting tips
+//         console.error('\n🔧 Troubleshooting tips:');
+//         console.error('1. Check your SMTP credentials in .env file');
+//         console.error('2. Ensure SMTP_USER and SMTP_PASS are correct');
+//         console.error('3. For Gmail, use App Password instead of regular password');
+//         console.error('4. Check if your email provider allows SMTP access');
+//         console.error('5. Try different SMTP settings (port 587 vs 465)');
+        
+//         return false;
+//     }
+// };
+
+// // Initialize SMTP connection on startup
+// verifySMTPConnection(); 
