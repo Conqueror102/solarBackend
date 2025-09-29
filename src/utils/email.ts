@@ -14,54 +14,28 @@ const SMTP_SECURE = process.env.SMTP_SECURE;
 const createTransporter = () => {
   const isProduction = NODE_ENV === 'production';
   
-  // Gmail configuration with improved settings
-  const gmailConfig = {
-    service: 'gmail',
+  // Single unified Gmail configuration
+  const config = {
+    host: SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(SMTP_PORT || '465'),
+    secure: true, // always true for port 465
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS
     },
     // Connection settings to prevent timeouts
     pool: true,
-    maxConnections: 5,
+    maxConnections: 3,
     maxMessages: 100,
-    rateLimit: 14, // Gmail limit
-    // Timeout settings
-    connectionTimeout: 60000, // 60 seconds
-    greetingTimeout: 30000,   // 30 seconds
-    socketTimeout: 60000,     // 60 seconds
-    // TLS settings
-    secure: true,
-    tls: {
-      rejectUnauthorized: false
-    }
-  };
-
-  // Alternative: Custom SMTP configuration
-  const customSMTPConfig = {
-    host: SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(SMTP_PORT || '587'),
-    secure: SMTP_SECURE === 'true', // true for 465, false for other ports
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    },
-    // Connection settings
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
-    // Timeout settings
-    connectionTimeout: 60000,
-    greetingTimeout: 30000,
-    socketTimeout: 60000,
+    // Timeout settings with longer values for better reliability
+    connectionTimeout: 120000, // 120 seconds
+    greetingTimeout: 60000,   // 60 seconds
+    socketTimeout: 120000,    // 120 seconds
     // TLS settings
     tls: {
-      rejectUnauthorized: false
+      rejectUnauthorized: true // Set to true for security
     }
   };
-
-  // Use custom SMTP if host is specified, otherwise use Gmail
-  const config = SMTP_HOST ? customSMTPConfig : gmailConfig;
   
   return nodemailer.createTransport(config);
 };

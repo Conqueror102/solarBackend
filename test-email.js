@@ -1,4 +1,4 @@
-import { verifySMTPConnection, sendCustomEmail } from './src/utils/email.js';
+import { verifySMTPConnection, sendCustomEmail } from './dist/utils/email.js';
 import dotenv from 'dotenv';
 
 // Load environment variables

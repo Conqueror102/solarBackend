@@ -15,7 +15,7 @@ import { validateImageFiles } from '../utils/imageValidation.js'; // Import vali
 // const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 // const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
 const getProducts = asyncHandler(async (req, res) => {
-    const products = await Product.find({});
+    const products = await Product.find({}).populate({ path: "brand", select: "name _id" });
     res.json(products);
 });
 const getProductById = asyncHandler(async (req, res) => {

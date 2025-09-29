@@ -50,3 +50,5 @@
 ::1 - - [18/Sep/2025:16:48:03 +0000] "POST /api/products HTTP/1.1" 500 74 "http://localhost:8080/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 ::1 - - [18/Sep/2025:16:48:04 +0000] "POST /api/products HTTP/1.1" 500 74 "http://localhost:8080/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 ::1 - - [19/Sep/2025:12:39:17 +0000] "GET /api/users/68aca72074725b5521e6a37f/orders HTTP/1.1" 200 2201 "-" "PostmanRuntime/7.46.1"
+::1 - - [29/Sep/2025:13:11:37 +0000] "GET /api/users/addresses HTTP/1.1" 403 23 "-" "PostmanRuntime/7.48.0"
+::1 - - [29/Sep/2025:13:19:25 +0000] "GET /api/users/addresses HTTP/1.1" 403 23 "-" "PostmanRuntime/7.48.0"

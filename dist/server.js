@@ -70,8 +70,10 @@ app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
 // Middleware: enable CORS
 const allowedOrigins = [
+    "https://solar-admin-vista.vercel.app",
     "http://localhost:8080", // local dev
-    "http://localhost:5173", // local dev
+    "http://localhost:3000", // local dev
+    "http://localhost:3001", // local dev
     "https://your-frontend.onrender.com", // deployed frontend
 ];
 app.use(cors({
@@ -83,7 +85,7 @@ app.use(cors({
             callback(new Error("Not allowed by CORS"));
         }
     },
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE, PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
 }));
@@ -115,9 +117,9 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use("/api/transactions", transactionRoutes);
-app.use("/paystack", paymentsRouter);
+app.use("/api/paystack", paymentsRouter);
 // Webhook AFTER json parser, with raw body:
-app.post("/paystack/webhook", rawBodyParser, webhookHandler);
+app.post("/api/paystack/webhook", rawBodyParser, webhookHandler);
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.get("/", (req, res) => {

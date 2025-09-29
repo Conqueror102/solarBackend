@@ -25,11 +25,11 @@ router.route('/settings')
     .get(protect, getUserSettings)
     .put(protect, updateUserSettings);
 router.route('/addresses')
-    .get(protect, getAddresses)
-    .post(protect, addAddress);
+    .get(protect, requireRoles(['user', 'admin', 'superadmin']), getAddresses)
+    .post(protect, requireRoles(['user', 'admin', 'superadmin']), addAddress);
 router.route('/addresses/:addressId')
-    .put(protect, updateAddress)
-    .delete(protect, deleteAddress);
+    .put(protect, requireRoles(['user', 'admin', 'superadmin']), updateAddress)
+    .delete(protect, requireRoles(['user', 'admin', 'superadmin']), deleteAddress);
 router.route('/addresses/:addressId/default')
-    .put(protect, setDefaultAddress);
+    .put(protect, requireRoles(['user', 'admin', 'superadmin']), setDefaultAddress);
 export default router;
