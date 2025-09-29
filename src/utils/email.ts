@@ -8,7 +8,7 @@ const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = process.env.SMTP_PORT;
-const SMTP_SECURE = process.env.SMTP_SECURE;
+
 
 // Email configuration with better error handling
 const createTransporter = () => {
@@ -16,9 +16,7 @@ const createTransporter = () => {
   
   // Single unified Gmail configuration
   const config = {
-    host: SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(SMTP_PORT || '465'),
-    secure: true, // always true for port 465
+    service: "gmail",
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS
