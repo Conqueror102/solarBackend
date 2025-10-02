@@ -4,19 +4,24 @@
   "type": "module",
   "description": "Backend for Solar E-commerce App",
   "main": "server.js",
-  "scripts": {
-    "clean": "rimraf dist",
-    "build": "npm run clean && tsc",
-    "start": "node dist/server.js",
-    "dev": "concurrently \"npm run tsc:watch\" \"npm run serve\"",
-    "tsc:watch": "tsc -w",
-    "serve": "nodemon dist/server.js"
-  },
+ "scripts": {
+  "clean": "rimraf dist",
+  "build": "npm run clean && tsc",
+  "start": "node dist/server.js",
+
+  "dev": "concurrently -k -n TSC,NODE \"npm:tsc:watch\" \"npm:serve\"",
+  "predev": "npm run build",
+  "tsc:watch": "tsc -w --preserveWatchOutput",
+  "serve": "nodemon --exec \"node -r dotenv/config dist/server.js\""
+},
   "dependencies": {
+    "@bull-board/api": "^6.13.0",
+    "@bull-board/express": "^6.13.0",
     "@sentry/node": "^9.40.0",
     "@types/cookie-parser": "^1.4.9",
     "@types/joi": "^17.2.2",
     "bcryptjs": "^2.4.3",
+    "bullmq": "^5.59.0",
     "cloudinary": "^1.41.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -26,6 +31,7 @@
     "express-rate-limit": "^6.11.2",
     "fs": "^0.0.1-security",
     "helmet": "^6.2.0",
+    "ioredis": "^5.8.0",
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^7.8.7",
@@ -47,7 +53,7 @@
     "@types/mongoose": "^5.11.96",
     "@types/morgan": "^1.9.10",
     "@types/multer": "^2.0.0",
-    "@types/node": "^24.0.15",
+    "@types/node": "^24.6.1",
     "@types/nodemailer": "^6.4.17",
     "@types/stripe": "^8.0.416",
     "@types/swagger-jsdoc": "^6.0.4",
@@ -55,6 +61,7 @@
     "concurrently": "^9.2.0",
     "nodemon": "^3.1.10",
     "rimraf": "^6.0.1",
-    "typescript": "^5.8.3"
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
   }
 }

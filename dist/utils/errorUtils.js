@@ -2,41 +2,46 @@
  * Custom error classes and error handling utilities
  */
 export class AppError extends Error {
-    constructor(message, statusCode, code) {
+    constructor(message, statusCode, code = "SERVER_ERROR") {
         super(message);
         this.statusCode = statusCode;
         this.status = `${statusCode}`.startsWith("4") ? "fail" : "error";
         this.isOperational = true;
         this.code = code;
-        Error.captureStackTrace(this, this.constructor);
+        // Node-safe stack capture
+        if (typeof Error.captureStackTrace === "function") {
+            Error.captureStackTrace(this, this.constructor);
+        }
     }
 }
 export class ValidationError extends AppError {
-    constructor(message) {
-        super(message, 400, "VALIDATION_ERROR");
+    constructor(message = "Invalid input", code = "VALIDATION_ERROR") {
+        super(message, 400, code);
     }
 }
 export class AuthenticationError extends AppError {
-    constructor(message = "Authentication failed") {
-        super("Authentication failed", 401, "AUTHENTICATION_ERROR");
+    constructor(message = "Authentication failed", code = "AUTHENTICATION_ERROR") {
+        // IMPORTANT: pass the message through
+        super(message, 401, code);
     }
 }
 export class AuthorizationError extends AppError {
-    constructor(message = "Not authorized to access this resource") {
-        super("Not authorized to access this resource", 403, "AUTHORIZATION_ERROR");
+    constructor(message = "Not authorized to access this resource", code = "AUTHORIZATION_ERROR") {
+        // IMPORTANT: pass the message through
+        super(message, 403, code);
     }
 }
 export class NotFoundError extends AppError {
-    constructor(resource) {
-        super(`${resource} not found`, 404, "NOT_FOUND");
+    constructor(resource, message) {
+        super(message ?? `${resource} not found`, 404, "NOT_FOUND");
     }
 }
 export class DuplicateError extends AppError {
-    constructor(resource) {
-        super(`${resource} already exists`, 409, "DUPLICATE_ERROR");
+    constructor(resource, message) {
+        super(message ?? `${resource} already exists`, 409, "DUPLICATE_ERROR");
     }
 }
-// Safe error messages that don't leak sensitive information
+/** Safe, client-facing messages that don’t leak internals */
 export const SAFE_ERROR_MESSAGES = {
     USER_NOT_FOUND: "Invalid credentials",
     INVALID_PASSWORD: "Invalid credentials",
@@ -47,8 +52,9 @@ export const SAFE_ERROR_MESSAGES = {
     ACCOUNT_LOCKED: "Account access temporarily restricted",
     PASSWORD_EXPIRED: "Password update required",
     INVALID_2FA: "Invalid authentication code",
+    EMAIL_NOT_VERIFIED: "Please verify your email to continue",
 };
-// Error codes for client-side handling
+/** Stable, machine-readable error codes */
 export const ERROR_CODES = {
     VALIDATION_ERROR: "VALIDATION_ERROR",
     AUTHENTICATION_ERROR: "AUTHENTICATION_ERROR",
@@ -60,4 +66,5 @@ export const ERROR_CODES = {
     ACCOUNT_LOCKED: "ACCOUNT_LOCKED",
     PASSWORD_EXPIRED: "PASSWORD_EXPIRED",
     INVALID_2FA: "INVALID_2FA",
+    EMAIL_NOT_VERIFIED: "EMAIL_NOT_VERIFIED",
 };

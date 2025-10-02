@@ -2,178 +2,159 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 dotenv.config();
 
-// Read environment variables once at module load time
-const NODE_ENV = process.env.NODE_ENV;
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = process.env.SMTP_PORT;
+const {
+  NODE_ENV,
+  SMTP_USER,
+  SMTP_PASS,
+  SMTP_HOST,
+  SMTP_PORT,
+  SMTP_SECURE,
+} = process.env;
 
+// --- Transporter setup ---
+const transporter = nodemailer.createTransport({
+  host: SMTP_HOST || 'smtp.gmail.com',
+  port: SMTP_PORT ? Number(SMTP_PORT) : 465,
+  secure: SMTP_SECURE === 'true' || SMTP_PORT === '465',
+  auth: {
+    user: SMTP_USER,
+    pass: SMTP_PASS,
+  },
+  pool: true,
+  maxConnections: 3,
+  maxMessages: 100,
+  connectionTimeout: 10000, // 10s
+  greetingTimeout: 5000,
+  socketTimeout: 10000,
+  tls: { rejectUnauthorized: true },
+});
 
-// Email configuration with better error handling
-const createTransporter = () => {
-  const isProduction = NODE_ENV === 'production';
-  
-  // Single unified Gmail configuration
-  const config = {
-    service: "gmail",
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    },
-    // Connection settings to prevent timeouts
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 100,
-    // Timeout settings with longer values for better reliability
-    connectionTimeout: 120000, // 120 seconds
-    greetingTimeout: 60000,   // 60 seconds
-    socketTimeout: 120000,    // 120 seconds
-    // TLS settings
-    tls: {
-      rejectUnauthorized: true // Set to true for security
+// --- Core mail sender ---
+async function sendMail(to: string | string[], subject: string, html: string) {
+  try {
+    const mailOptions = {
+      from: `"Solar Store" <${SMTP_USER}>`,
+      to: Array.isArray(to) ? to.join(',') : to,
+      subject,
+      html,
+    };
+
+    const result = await transporter.sendMail(mailOptions);
+    console.log(`✅ Email sent: ${result.messageId}`);
+    return result;
+  } catch (error: any) {
+    console.error('❌ Email failed:', {
+      to,
+      subject,
+      error: error.message,
+      code: error.code,
+      command: error.command,
+    });
+
+    if (NODE_ENV === 'production') {
+      console.warn('⚠️ Email error ignored in production');
+      return null;
+    } else {
+      throw error;
     }
-  };
-  
-  return nodemailer.createTransport(config);
-};
+  }
+}
 
-const transporter = createTransporter();
-
+// --- Order + stock helpers ---
 interface UserInfo {
-    email: string;
-    name?: string;
+  email: string;
+  name?: string;
 }
 
 interface OrderInfo {
-    _id: string;
-    totalAmount: number;
-    status: string;
-    paymentStatus?: string;
+  _id: string;
+  totalAmount: number;
+  status: string;
+  paymentStatus?: string;
 }
 
 const orderStatusMessages: Record<string, string> = {
-    'New': 'Your order has been received.',
-    'Processing': 'Your order is currently being processed.',
-    'Shipped': 'Good news! Your order has been shipped.',
-    'Delivered': 'Your order has been delivered. Thank you for shopping with us!',
-    'Cancelled': 'Your order has been cancelled. If you have questions, please contact support.'
+  New: 'Your order has been received.',
+  Processing: 'Your order is currently being processed.',
+  Shipped: 'Good news! Your order has been shipped.',
+  Delivered: 'Your order has been delivered. Thank you for shopping with us!',
+  Cancelled:
+    'Your order has been cancelled. If you have questions, please contact support.',
 };
 
 const paymentStatusMessages: Record<string, string> = {
-    'Pending': 'Your payment is pending.',
-    'Processing': 'Your payment is being processed.',
-    'Completed': 'Your payment has been successfully completed.',
-    'Failed': 'Your payment attempt failed. Please try again.',
-    'Refunded': 'Your payment has been refunded.'
+  Pending: 'Your payment is pending.',
+  Processing: 'Your payment is being processed.',
+  Completed: 'Your payment has been successfully completed.',
+  Failed: 'Your payment attempt failed. Please try again.',
+  Refunded: 'Your payment has been refunded.',
 };
 
-async function sendMail(to: string, subject: string, html: string) {
-    try {
-        const mailOptions = {
-            from: `"Solar Store" <${SMTP_USER}>`,
-            to,
-            subject,
-            html,
-        };
-        
-        const result = await transporter.sendMail(mailOptions);
-        console.log(`Email sent successfully to ${to}: ${result.messageId}`);
-        return result;
-    } catch (error: any) {
-        console.error('Email sending failed:', {
-            to,
-            subject,
-            error: error.message,
-            code: error.code,
-            command: error.command
-        });
-        
-        // Don't throw error in production to prevent app crashes
-        if (NODE_ENV === 'production') {
-            console.error('Email failed but continuing...');
-            return null;
-        } else {
-            throw error;
-        }
-    }
-}
-
+// Order confirmation
 export async function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
-    const html = `
-        <h2>Thank you for your order, ${user.name || ''}!</h2>
-        <p>Your order <b>#${order._id.slice(-5)}</b> has been placed successfully.</p>
-        <p>Total Amount: <b>$${order.totalAmount.toFixed(2)}</b></p>
-        <p>Status: <b>${order.status}</b></p>
-    `;
-    await sendMail(user.email, 'Order Confirmation', html);
+  const html = `
+    <h2>Thank you for your order, ${user.name || ''}!</h2>
+    <p>Your order <b>#${order._id.slice(-5)}</b> has been placed successfully.</p>
+    <p>Total Amount: <b>$${order.totalAmount.toFixed(2)}</b></p>
+    <p>Status: <b>${order.status}</b></p>
+  `;
+  return sendMail(user.email, 'Order Confirmation', html);
 }
 
-export async function sendOrderStatusUpdateEmail(user: UserInfo, order: OrderInfo) {
-    const statusMsg = orderStatusMessages[order.status] || `Your order status is now: ${order.status}`;
-    const html = `
-        <h2>Order Status Update</h2>
-        <p>Order <b>#${order._id.slice(-5)}</b> is now <b>${order.status}</b>.</p>
-        <p>${statusMsg}</p>
-    `;
-    await sendMail(user.email, 'Order Status Updated', html);
+// Order status update
+export async function sendOrderStatusUpdateEmail(
+  user: UserInfo,
+  order: OrderInfo
+) {
+  const statusMsg =
+    orderStatusMessages[order.status] ||
+    `Your order status is now: ${order.status}`;
+  const html = `
+    <h2>Order Status Update</h2>
+    <p>Order <b>#${order._id.slice(-5)}</b> is now <b>${order.status}</b>.</p>
+    <p>${statusMsg}</p>
+  `;
+  return sendMail(user.email, 'Order Status Updated', html);
 }
 
-export async function sendLowStockEmail(adminEmails: string[], lowStockProducts: { name: string; stock: number; }[]) {
-    const productList = lowStockProducts.map(p => `<li>${p.name}: <b>${p.stock}</b> left</li>`).join('');
-    const html = `
-        <h2>Low Stock Alert</h2>
-        <p>The following products are low in stock:</p>
-        <ul>${productList}</ul>
-    `;
-    for (const email of adminEmails) {
-        await sendMail(email, 'Low Stock Alert', html);
-    }
+// Low stock alert
+export async function sendLowStockEmail(
+  adminEmails: string[],
+  lowStockProducts: { name: string; stock: number }[]
+) {
+  const productList = lowStockProducts
+    .map((p) => `<li>${p.name}: <b>${p.stock}</b> left</li>`)
+    .join('');
+  const html = `
+    <h2>Low Stock Alert</h2>
+    <p>The following products are low in stock:</p>
+    <ul>${productList}</ul>
+  `;
+  return sendMail(adminEmails, 'Low Stock Alert', html);
 }
 
-export async function sendCustomEmail(to: string | string[], subject: string, html: string) {
-    if (Array.isArray(to)) {
-        for (const email of to) {
-            await sendMail(email, subject, html);
-        }
-    } else {
-        await sendMail(to, subject, html);
-    }
+// Custom single/bulk email
+export async function sendCustomEmail(
+  to: string | string[],
+  subject: string,
+  html: string
+) {
+  return sendMail(to, subject, html);
 }
 
+// Daily report
 export async function sendDailySalesReportEmail(to: string[], html: string) {
-    for (const email of to) {
-        await sendMail(email, 'Daily Sales Report', html);
-    }
+  return sendMail(to, 'Daily Sales Report', html);
 }
 
-// Verify SMTP connection with better error handling
-export const verifySMTPConnection = async (): Promise<boolean> => {
-    try {
-        await transporter.verify();
-        console.log('✅ SMTP connection verified successfully');
-        return true;
-    } catch (error: any) {
-        console.error('❌ SMTP connection failed:', {
-            message: error.message,
-            code: error.code,
-            command: error.command,
-            host: SMTP_HOST || 'smtp.gmail.com',
-            port: SMTP_PORT || '587',
-            user: SMTP_USER
-        });
-        
-        // Provide helpful troubleshooting tips
-        console.error('\n🔧 Troubleshooting tips:');
-        console.error('1. Check your SMTP credentials in .env file');
-        console.error('2. Ensure SMTP_USER and SMTP_PASS are correct');
-        console.error('3. For Gmail, use App Password instead of regular password');
-        console.error('4. Check if your email provider allows SMTP access');
-        console.error('5. Try different SMTP settings (port 587 vs 465)');
-        
-        return false;
-    }
-};
+// --- Background verify (non-blocking) ---
+(async () => {
+  try {
+    const ok = await transporter.verify();
+    if (ok) console.log('✅ SMTP connection verified');
+  } catch (err: any) {
+    console.warn('⚠️ SMTP verify failed:', err.message);
+  }
+})();
 
-// Initialize SMTP connection on startup
-verifySMTPConnection(); 
+export { sendMail, transporter };

@@ -398,23 +398,30 @@ export const notifyRevenueMilestone = async (
  */
 export const notifyUserActivity = async (
   activityType: string,
-  userName: string,
-  userEmail: string,
-  details: string
+  userName?: string,
+  userEmail?: string,
+  details?: string,
+  changes?: string[]
 ): Promise<INotification[]> => {
+  const changesMsg = changes && changes.length > 0 
+    ? ` Changes: ${changes.join(', ')}`
+    : '';
+
   return await createAdminNotification(
     'user_activity',
     `User Activity: ${activityType}`,
-    `${userName} (${userEmail}) - ${details}`,
+    `${userName} (${userEmail}) - ${details}${changesMsg}`,
     {
       userName,
       userEmail,
       activityType,
-      details
+      details,
+      changes
     },
     'medium'
   );
 };
+
 
 /**
  * Inventory alert notification

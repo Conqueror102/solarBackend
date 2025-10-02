@@ -187,12 +187,16 @@ export const notifyRevenueMilestone = async (milestone, amount, period) => {
 /**
  * User activity notification
  */
-export const notifyUserActivity = async (activityType, userName, userEmail, details) => {
-    return await createAdminNotification('user_activity', `User Activity: ${activityType}`, `${userName} (${userEmail}) - ${details}`, {
+export const notifyUserActivity = async (activityType, userName, userEmail, details, changes) => {
+    const changesMsg = changes && changes.length > 0
+        ? ` Changes: ${changes.join(', ')}`
+        : '';
+    return await createAdminNotification('user_activity', `User Activity: ${activityType}`, `${userName} (${userEmail}) - ${details}${changesMsg}`, {
         userName,
         userEmail,
         activityType,
-        details
+        details,
+        changes
     }, 'medium');
 };
 /**
