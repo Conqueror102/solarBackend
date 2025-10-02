@@ -1,0 +1,8 @@
+{
+    "watch": ["src"],
+    "ext": "ts,js,json",
+    "ignore": ["dist", "node_modules", ".git", "logs", "**/*.map"],
+    "exec": "node dist/server.js",
+    "delay": "200"
+  }
+  

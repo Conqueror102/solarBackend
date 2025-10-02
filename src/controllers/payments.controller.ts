@@ -1,29 +1,27 @@
+// src/controllers/payments.controller.ts
 import { Request, Response } from "express";
 import crypto from "crypto";
 import { raw as rawParser } from "express";
+
 import * as paystack from "../services/paystack.service.js";
 import { Order } from "../models/Order.js";
 import { User } from "../models/User.js";
-import { sendOrderStatusUpdateEmail } from "../utils/email.js";
-import {
-  createPaymentSuccessNotification,
-  createPaymentFailedNotification,
-} from "../utils/notificationService.js";
-import {
-  notifyPaymentReceived,
-  notifyPaymentFailed,
-} from "../utils/adminNotificationService.js";
-import Transaction from "../models/transaction.history.js";
 
-// Read environment variables once at module load time
+// ⬇ our new enqueue producers (queue → worker does the heavy lifting)
+import {
+  enqueuePaymentVerify,
+  enqueuePaymentEvent,
+} from "../queues/producers/paymentProducers.js";
+
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET!;
 
-// IMPORTANT: use this ONLY on the webhook route
+// Use ONLY on the webhook route
 export const rawBodyParser = rawParser({ type: "*/*" });
 
 /**
  * POST /paystack/init
  * Body: { orderId, callback_url? }
+ * - stays synchronous since we must return Paystack's authorization_url
  */
 export async function initPaystackPayment(req: Request, res: Response) {
   try {
@@ -35,29 +33,25 @@ export async function initPaystackPayment(req: Request, res: Response) {
     const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ error: "Order not found" });
 
-    // Ownership check (if this route is for customers)
+    // Ownership check (if customer endpoint)
     if (!order.user.equals((req as any).user._id)) {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    if (order.isPaid)
-      return res.status(400).json({ error: "Order already paid" });
+    if (order.isPaid) return res.status(400).json({ error: "Order already paid" });
 
-    // Freeze amount & currency
+    // Freeze amount & currency for verification later
     order.currency = order.currency || "NGN";
     if (order.amountAtPayment == null) {
       order.amountAtPayment = order.totalAmount;
     }
-    const amountKobo = Math.round(
-      (order.amountAtPayment ?? order.totalAmount) * 100
-    );
+    const amountKobo = Math.round((order.amountAtPayment ?? order.totalAmount) * 100);
 
-    // Fetch customer email (needed by Paystack)
+    // Paystack needs customer email
     const user = await User.findById(order.user);
-    if (!user?.email)
-      return res.status(400).json({ error: "Customer email required" });
+    if (!user?.email) return res.status(400).json({ error: "Customer email required" });
 
-    // Move to Processing (payment)
+    // Move to Processing (payment) if still Pending
     if (!order.paymentStatus || order.paymentStatus === "Pending") {
       order.paymentStatus = "Processing";
       await order.save();
@@ -67,10 +61,7 @@ export async function initPaystackPayment(req: Request, res: Response) {
       email: user.email,
       amount: amountKobo,
       currency: order.currency,
-      metadata: {
-        orderId: String(order._id),
-        userId: String(order.user),
-      },
+      metadata: { orderId: String(order._id), userId: String(order.user) },
       ...(callback_url ? { callback_url } : {}),
     });
 
@@ -84,266 +75,71 @@ export async function initPaystackPayment(req: Request, res: Response) {
       access_code: initResp.data.access_code,
     });
   } catch (err: any) {
-    return res
-      .status(400)
-      .json({ error: err.message || "Failed to init Paystack" });
+    return res.status(400).json({ error: err.message || "Failed to init Paystack" });
   }
 }
 
 /**
  * GET /paystack/verify/:reference
- * Optional polling endpoint for your success page.
+ * - now enqueues a verify job and returns immediately
  */
 export async function verifyPaystackPayment(req: Request, res: Response) {
   try {
     const { reference } = req.params;
-
-    const verifyResp: any = await paystack.verify(reference);
-    const trx = verifyResp.data;
-
-    const order = await Order.findOne({ paystackReference: reference });
-    if (!order) return res.status(404).json({ error: "Order not found" });
-
-    const amountKobo = Math.round(
-      (order.amountAtPayment ?? order.totalAmount) * 100
-    );
-    const currency = order.currency || "NGN";
-
-    if (
-      trx.status === "success" &&
-      trx.amount === amountKobo &&
-      trx.currency === currency
-    ) {
-      const firstTime = !order.isPaid;
-      if (firstTime) {
-        order.isPaid = true;
-        order.paidAt = new Date();
-      }
-      order.paymentStatus = "Completed";
-      if (order.status === "New") order.status = "Processing";
-      await order.save();
-
-      if (firstTime) {
-        const user = await User.findById(order.user);
-        if (user?.email) {
-          await sendOrderStatusUpdateEmail(
-            { email: user.email, name: (user as any).name },
-            {
-              _id: order._id.toString(),
-              totalAmount: order.totalAmount,
-              status: order.status,
-              paymentStatus: order.paymentStatus,
-            }
-          );
-        }
-        await createPaymentSuccessNotification(
-          order.user.toString(),
-          order._id.toString(),
-          order.totalAmount,
-          order.paymentMethod ?? "paystack",
-          order.currency
-        );
-        await notifyPaymentReceived(
-          order._id.toString(),
-          order.totalAmount,
-          order.paymentMethod || "paystack",
-          (user as any)?.name || "Unknown Customer"
-        );
-      }
-    } else if (
-      (trx.status === "failed" || trx.status === "abandoned") &&
-      !order.isPaid
-    ) {
-      order.paymentStatus = "Failed";
-      await order.save();
-    }
-
-    const user = await User.findById(order.user);
-    if (user?.email) {
-      await sendOrderStatusUpdateEmail(
-        { email: user.email, name: (user as any).name },
-        {
-          _id: order._id.toString(),
-          totalAmount: order.totalAmount,
-          status: order.status,
-          paymentStatus: order.paymentStatus,
-        }
-      );
-    }
-    await createPaymentFailedNotification(
-      order.user.toString(),
-      order._id.toString(),
-      order.totalAmount,
-      order.paymentMethod || "paystack",
-      "Payment verification failed",
-      order.currency || "NGN"
-    );
-    await notifyPaymentFailed(
-      order._id.toString(),
-      order.totalAmount,
-      order.paymentMethod || "paystack",
-      trx.status === "failed"
-        ? "Payment verification failed"
-        : "Payment abandoned",
-      (user as any)?.name || "Unknown Customer"
-    );
-
-    return res.json({
-      paid: order.isPaid,
-      paymentStatus: order.paymentStatus,
-      status: order.status,
-      orderId: order._id,
-    });
+    await enqueuePaymentVerify({ provider: "paystack", reference });
+    return res.json({ queued: true, reference });
   } catch (err: any) {
-    return res
-      .status(400)
-      .json({ error: err.message || "Verification failed" });
+    return res.status(400).json({ error: err.message || "Verification enqueue failed" });
   }
 }
 
 /**
  * POST /paystack/webhook
- * MUST use rawBodyParser on this route only.
+ * - MUST use rawBodyParser on this route only
+ * - verifies signature, normalizes, enqueues; worker does DB/email/notifications
  */
-
 export async function paystackWebhook(req: Request, res: Response) {
   try {
-    // Verify Paystack signature
     const headerSig = req.header("x-paystack-signature");
     if (!headerSig) return res.sendStatus(401);
 
-    const secret = PAYSTACK_SECRET;
     const raw = req.body as Buffer;
-    const computed = crypto
-      .createHmac("sha512", secret)
-      .update(raw)
-      .digest("hex");
-
+    const computed = crypto.createHmac("sha512", PAYSTACK_SECRET).update(raw).digest("hex");
     const valid =
       headerSig.length === computed.length &&
       crypto.timingSafeEqual(Buffer.from(headerSig), Buffer.from(computed));
     if (!valid) return res.sendStatus(401);
 
     const event = JSON.parse(raw.toString("utf8"));
-    const reference: string = event.data.reference;
 
-    // Defensive verify with Paystack
-    const verifyResp: any = await paystack.verify(reference);
-    const trxData = verifyResp.data;
+    // normalize eventType
+    const eventType =
+      event.event === "charge.success"
+        ? "payment_succeeded"
+        : event.event === "charge.failed" || event.event === "charge.abandoned"
+        ? "payment_failed"
+        : event.event === "refund.processed"
+        ? "payment_refunded"
+        : "payment_settlement"; // catch-all (e.g., chargeback/settlement)
 
-    // Upsert into Transaction collection
-    let trx = await Transaction.findOneAndUpdate(
-      { transactionId: trxData.id },
-      {
-        $setOnInsert: {
-          transactionId: trxData.id,
-          amount: trxData.amount / 100, // convert from kobo
-          currency: trxData.currency,
-          reference: trxData.reference,
-          customer: {
-            id: trxData.customer.id,
-            first_name: trxData.customer.first_name,
-            last_name: trxData.customer.last_name,
-            email: trxData.customer.email,
-          },
-          paidAt: trxData.paid_at,
-        },
-      },
-      { upsert: true, new: true }
-    );
+    const data = event.data || {};
+    const reference: string = data.reference;
+    const amountMajor = typeof data.amount === "number" ? data.amount / 100 : undefined;
 
-    // Handle different event types
-    switch (event.event) {
-      case "charge.success":
-        await trx.updateStatus("successful");
-        break;
-      case "charge.failed":
-      case "charge.abandoned":
-        await trx.updateStatus("failed");
-        break;
-      case "refund.processed":
-        await trx.updateStatus("refunded");
-        break;
-      case "chargeback":
-        await trx.updateStatus("chargeback");
-        break;
-      default:
-        console.log("Unhandled event:", event.event);
-    }
-
-    // Update Order if linked
-    const order = await Order.findOne({ paystackReference: reference });
-    if (order) {
-      if (trx.status === "successful") {
-        const firstTime = !order.isPaid;
-        order.isPaid = true;
-        order.paidAt = new Date();
-        order.paymentStatus = "Completed";
-        if (order.status === "New") order.status = "Processing";
-        await order.save();
-
-        if (firstTime) {
-          const user = await User.findById(order.user);
-          if (user?.email) {
-            await sendOrderStatusUpdateEmail(
-              { email: user.email, name: (user as any).name },
-              {
-                _id: order._id.toString(),
-                totalAmount: order.totalAmount,
-                status: order.status,
-                paymentStatus: order.paymentStatus,
-              }
-            );
-          }
-          await createPaymentSuccessNotification(
-            order.user.toString(),
-            order._id.toString(),
-            order.totalAmount,
-            order.paymentMethod || "paystack",
-            order.currency
-          );
-          await notifyPaymentReceived(
-            order._id.toString(),
-            order.totalAmount,
-            order.paymentMethod || "paystack",
-            (user as any)?.name || "Unknown Customer"
-          );
-        }
-      } else if (trx.status === "failed") {
-        if (!order.isPaid) {
-          order.paymentStatus = "Failed";
-          await order.save();
-
-          const user = await User.findById(order.user);
-          if (user?.email) {
-            await sendOrderStatusUpdateEmail(
-              { email: user.email, name: (user as any).name },
-              {
-                _id: order._id.toString(),
-                totalAmount: order.totalAmount,
-                status: order.status,
-                paymentStatus: order.paymentStatus,
-              }
-            );
-          }
-          await createPaymentFailedNotification(
-            order.user.toString(),
-            order._id.toString(),
-            order.totalAmount,
-            order.paymentMethod || "paystack",
-            trx.status,
-            order.currency
-          );
-          await notifyPaymentFailed(
-            order._id.toString(),
-            order.totalAmount,
-            order.paymentMethod || "paystack",
-            trx.status,
-            (user as any)?.name || "Unknown"
-          );
-        }
-      }
-    }
+    await enqueuePaymentEvent({
+      provider: "paystack",
+      eventType,
+      eventId: String(data.id ?? data.reference ?? reference),
+      reference,
+      orderId: String(data?.metadata?.orderId ?? ""),
+      amount: amountMajor,
+      currency: data.currency ?? "NGN",
+      customerEmail: data?.customer?.email,
+      customerName: data?.customer?.first_name
+        ? `${data.customer.first_name} ${data.customer.last_name ?? ""}`.trim()
+        : undefined,
+      raw: event,
+    });
 
     return res.sendStatus(200);
   } catch (err) {

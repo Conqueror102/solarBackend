@@ -1,126 +1,118 @@
+/**
+ * brandController.ts
+ * ------------------
+ * Handles brand creation, updating, deleting, and listing.
+ */
 import asyncHandler from 'express-async-handler';
 import { Request, Response } from 'express';
 import { Brand } from '../models/Brand.js';
 import { Product } from '../models/Product.js';
 import { createBrandSchema, updateBrandSchema, bulkUpdateBrandSchema } from '../validators/brand.js';
-import { notifyBrandAdded, notifyBrandUpdated, notifyBrandDeleted } from '../utils/adminNotificationService.js';
 import uploadToCloudinary from '../utils/cloudinaryUpload.js';
-import { validateImageFile } from '../utils/imageValidation.js'; // Import validation utility
+import { validateImageFile } from '../utils/imageValidation.js';
 import mongoose from 'mongoose';
+
+// ⏩ queue producers
+import {
+  enqueueAdminBrandAdded,
+  enqueueAdminBrandUpdated,
+  enqueueAdminBrandDeleted,
+} from '../queues/producers/adminNotificationProducers.js';
 
 const getBrands = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, search, isActive, sortBy = 'name', sortOrder = 'asc' } = req.query;
-  
-  // Build filter
+
   const filter: any = {};
-  
   if (search) {
     filter.$or = [
       { name: { $regex: search, $options: 'i' } },
       { description: { $regex: search, $options: 'i' } },
-      { country: { $regex: search, $options: 'i' } }
+      { country: { $regex: search, $options: 'i' } },
     ];
   }
-  
   if (isActive !== undefined) {
     filter.isActive = isActive === 'true';
   }
-  
-  // Build sort
+
   const sort: any = {};
   sort[sortBy as string] = sortOrder === 'desc' ? -1 : 1;
-  
+
   const skip = (Number(page) - 1) * Number(limit);
-  
-  const brands = await Brand.find(filter)
-    .sort(sort)
-    .skip(skip)
-    .limit(Number(limit))
-    .populate('productCount');
-  
-  const total = await Brand.countDocuments(filter);
-  
+
+  const [brands, total] = await Promise.all([
+    Brand.find(filter).sort(sort).skip(skip).limit(Number(limit)).populate('productCount'),
+    Brand.countDocuments(filter),
+  ]);
+
   res.json({
     brands,
-    pagination: {
-      page: Number(page),
-      limit: Number(limit),
-      total,
-      pages: Math.ceil(total / Number(limit))
-    }
+    pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / Number(limit)) },
   });
 });
 
 const getBrandById = asyncHandler(async (req: Request, res: Response) => {
   const brand = await Brand.findById(req.params.id).populate('productCount');
-  
   if (!brand) {
     res.status(404);
     throw new Error('Brand not found');
   }
-  
   res.json(brand);
 });
 
 const createBrand = asyncHandler(async (req: Request, res: Response) => {
-  // For multipart/form-data, fields are in req.body as strings
   const brandData = {
     name: req.body.name,
     description: req.body.description,
     website: req.body.website,
     country: req.body.country,
-    isActive: req.body.isActive !== undefined ? req.body.isActive === 'true' : true
+    isActive: req.body.isActive !== undefined ? req.body.isActive === 'true' : true,
   };
-  
+
   const { error } = createBrandSchema.validate(brandData);
   if (error) {
     res.status(400);
     throw new Error(error.details[0].message);
   }
-  
+
   const { name, description, website, country, isActive } = brandData;
-  
-  // Check if brand already exists
+
+  // enforce uniqueness (case-insensitive)
   const existingBrand = await Brand.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
   if (existingBrand) {
     res.status(400);
     throw new Error('Brand with this name already exists');
   }
-  
-  // Handle logo upload
+
+  // optional logo upload
   let logoUrl = '';
   if ((req as any).file) {
     const logoFile = (req as any).file;
-    
-    // Validate image using utility
     const validation = validateImageFile(logoFile);
     if (!validation.isValid) {
       res.status(400);
       throw new Error(validation.error);
     }
-    
-    // Upload to Cloudinary
     const result = await uploadToCloudinary(logoFile.buffer, logoFile.mimetype);
     logoUrl = result.secure_url;
   }
-  
+
   const brand = await Brand.create({
     name,
     description,
     logo: logoUrl,
     website,
     country,
-    isActive
+    isActive,
   });
-  
-  // Notify admins
-  await notifyBrandAdded(brand._id.toString(), brand.name);
-  
+
+  // enqueue admin notify
+  const actor = (req as any)?.user?.name || 'System';
+  await enqueueAdminBrandAdded({ brandId: brand._id.toString(), brandName: brand.name, addedBy: actor });
+
   res.status(201).json(brand);
 });
 
 const updateBrand = asyncHandler(async (req: Request, res: Response) => {
-  // For multipart/form-data, fields are in req.body as strings
   const brandData = {
     name: req.body.name,
     description: req.body.description,
@@ -129,56 +121,75 @@ const updateBrand = asyncHandler(async (req: Request, res: Response) => {
     isActive: req.body.isActive !== undefined ? req.body.isActive === 'true' : undefined,
     logo: '',
   };
-  
+
   const { error } = updateBrandSchema.validate(brandData);
   if (error) {
     res.status(400);
     throw new Error(error.details[0].message);
   }
-  
+
   const brand = await Brand.findById(req.params.id);
   if (!brand) {
     res.status(404);
     throw new Error('Brand not found');
   }
-  
-  // Check if name is being changed and if it conflicts
+
+  // conflicting name?
   if (req.body.name && req.body.name !== brand.name) {
-    const existingBrand = await Brand.findOne({ 
+    const existingBrand = await Brand.findOne({
       name: { $regex: new RegExp(`^${req.body.name}$`, 'i') },
-      _id: { $ne: brand._id }
+      _id: { $ne: brand._id },
     });
     if (existingBrand) {
       res.status(400);
       throw new Error('Brand with this name already exists');
     }
   }
-  
-  // Handle logo upload
-  if ((req as any).file) {
+
+  // optional new logo
+  if ( (req as any).file ) {
     const logoFile = (req as any).file;
-    
-    // Validate image using utility
     const validation = validateImageFile(logoFile);
     if (!validation.isValid) {
       res.status(400);
       throw new Error(validation.error);
     }
-    
-    // Upload to Cloudinary
     const result = await uploadToCloudinary(logoFile.buffer, logoFile.mimetype);
     brandData.logo = result.secure_url;
   }
-  
-  const updatedBrand = await Brand.findByIdAndUpdate(
-    req.params.id,
-    brandData,
-    { new: true, runValidators: true }
-  );
-  
-  // Notify admins
-  await notifyBrandUpdated(brand._id.toString(), brand.name, updatedBrand?.name || brand.name);
-  
+
+  // track changed fields for audit (optional)
+  const before = {
+    name: brand.name,
+    description: brand.description,
+    website: brand.website,
+    country: brand.country,
+    isActive: brand.isActive,
+    logo: brand.logo,
+  };
+
+  const updatedBrand = await Brand.findByIdAndUpdate(req.params.id, brandData, {
+    new: true,
+    runValidators: true,
+  });
+
+  // enqueue admin notify
+  const actor = (req as any)?.user?.name || 'System';
+  const changes: string[] = [];
+  if (updatedBrand) {
+    (['name', 'description', 'website', 'country', 'isActive', 'logo'] as const).forEach((k) => {
+      if ((before as any)[k] !== (updatedBrand as any)[k]) changes.push(k);
+    });
+  }
+
+  await enqueueAdminBrandUpdated({
+    brandId: brand._id.toString(),
+    oldBrandName: brand.name,
+    newBrandName: updatedBrand?.name || brand.name,
+    updatedBy: actor,
+    changes,
+  });
+
   res.json(updatedBrand);
 });
 
@@ -188,83 +199,64 @@ const deleteBrand = asyncHandler(async (req: Request, res: Response) => {
     res.status(404);
     throw new Error('Brand not found');
   }
-  
-  // Check if brand has products
+
   const productCount = await Product.countDocuments({ brand: brand._id });
   if (productCount > 0) {
     res.status(400);
-    throw new Error(`Cannot delete brand. It has ${productCount} associated products. Please reassign or delete the products first.`);
+    throw new Error(
+      `Cannot delete brand. It has ${productCount} associated products. Please reassign or delete the products first.`
+    );
   }
-  
+
   await Brand.findByIdAndDelete(req.params.id);
-  
-  // Notify admins
-  await notifyBrandDeleted(brand._id.toString(), brand.name);
-  
+
+  const actor = (req as any)?.user?.name || 'System';
+  await enqueueAdminBrandDeleted({ brandId: brand._id.toString(), brandName: brand.name, deletedBy: actor });
+
   res.json({ message: 'Brand deleted successfully' });
 });
 
 const getBrandProducts = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10 } = req.query;
   const skip = (Number(page) - 1) * Number(limit);
-  
-  const products = await Product.find({ brand: req.params.id })
-    .populate('category', 'name')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(Number(limit));
-  
-  const total = await Product.countDocuments({ brand: req.params.id });
-  
+
+  const [products, total] = await Promise.all([
+    Product.find({ brand: req.params.id })
+      .populate('category', 'name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit)),
+    Product.countDocuments({ brand: req.params.id }),
+  ]);
+
   res.json({
     products,
-    pagination: {
-      page: Number(page),
-      limit: Number(limit),
-      total,
-      pages: Math.ceil(total / Number(limit))
-    }
+    pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / Number(limit)) },
   });
 });
 
 const getBrandStats = asyncHandler(async (req: Request, res: Response) => {
   const brandId = req.params.id;
 
-  const [
-    totalProducts,
-    activeProducts,
-    totalStock,
-    lowStockProducts,
-    outOfStockProducts
-  ] = await Promise.all([
-    // Total products for the brand
+  const [totalProducts, activeProducts, totalStockAgg, lowStockProducts, outOfStockProducts] = await Promise.all([
     Product.countDocuments({ brand: brandId }),
-
-    // Active = products with stock > 0
     Product.countDocuments({ brand: brandId, stock: { $gt: 0 } }),
-
-    // Total stock (sum of stock across all products)
     Product.aggregate([
       { $match: { brand: new mongoose.Types.ObjectId(brandId) } },
-      { $group: { _id: null, total: { $sum: '$stock' } } }
+      { $group: { _id: null, total: { $sum: '$stock' } } },
     ]),
-
-    // Low stock = products with stock between 1 and 10
     Product.countDocuments({ brand: brandId, stock: { $lte: 10, $gt: 0 } }),
-
-    // Out of stock = products with stock = 0
-    Product.countDocuments({ brand: brandId, stock: 0 })
+    Product.countDocuments({ brand: brandId, stock: 0 }),
   ]);
 
   res.json({
     totalProducts,
     activeProducts,
-    totalStock: totalStock[0]?.total || 0,
+    totalStock: totalStockAgg[0]?.total || 0,
     lowStockProducts,
-    outOfStockProducts
+    outOfStockProducts,
   });
 });
-
 
 const bulkUpdateBrands = asyncHandler(async (req: Request, res: Response) => {
   const { error } = bulkUpdateBrandSchema.validate(req.body);
@@ -272,25 +264,25 @@ const bulkUpdateBrands = asyncHandler(async (req: Request, res: Response) => {
     res.status(400);
     throw new Error(error.details[0].message);
   }
-  
+
   const { ids, updates } = req.body;
-  
-  const result = await Brand.updateMany(
-    { _id: { $in: ids } },
-    { $set: updates }
-  );
-  
+
+  const result = await Brand.updateMany({ _id: { $in: ids } }, { $set: updates });
+
+  // optional: enqueue a single admin activity summary if you want an audit trail
+  // await enqueueAdminUserActivity({
+  //   activityType: 'bulk_brand_update',
+  //   details: `${result.modifiedCount} brand(s) updated`,
+  // });
+
   res.json({
     message: `${result.modifiedCount} brand(s) updated successfully`,
-    modifiedCount: result.modifiedCount
+    modifiedCount: result.modifiedCount,
   });
 });
 
-const getActiveBrands = asyncHandler(async (req: Request, res: Response) => {
-  const brands = await Brand.find({ isActive: true })
-    .select('name logo')
-    .sort({ name: 1 });
-  
+const getActiveBrands = asyncHandler(async (_req: Request, res: Response) => {
+  const brands = await Brand.find({ isActive: true }).select('name logo').sort({ name: 1 });
   res.json(brands);
 });
 
@@ -303,5 +295,5 @@ export {
   getBrandProducts,
   getBrandStats,
   bulkUpdateBrands,
-  getActiveBrands
+  getActiveBrands,
 };

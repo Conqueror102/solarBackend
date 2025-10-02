@@ -32,10 +32,13 @@ import { rawBodyParser } from './controllers/payments.controller.js';
 import paymentsRouter from "./routes/payments.routes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import brandRoutes from './routes/brandRoutes.js';
+import { checkRedisConnectivity } from './infra/redisHealth.js';
+import { bullBoardRouter } from './infra/bullBoard.js';
 // Load environment variables
 dotenv.config();
 // Environment variable checks
 const requiredEnv = [
+    'REDIS_URL',
     'MONGO_URI',
     'JWT_SECRET',
     'SMTP_HOST',
@@ -122,6 +125,16 @@ app.use("/api/paystack", paymentsRouter);
 app.post("/api/paystack/webhook", rawBodyParser, webhookHandler);
 // Serve static files (e.g., product images)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.get('/health/redis', async (_req, res) => {
+    try {
+        const ok = await checkRedisConnectivity();
+        res.status(ok ? 200 : 500).json({ ok });
+    }
+    catch (e) {
+        res.status(500).json({ ok: false, error: e?.message });
+    }
+});
+app.use('/admin/queues', bullBoardRouter);
 app.get("/", (req, res) => {
     res.json({
         status: "success",

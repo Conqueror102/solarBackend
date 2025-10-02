@@ -2,13 +2,13 @@ import asyncHandler from "express-async-handler";
 import { Order } from "../models/Order.js";
 import { User } from "../models/User.js";
 import { Product } from "../models/Product.js";
-import { sendOrderPlacedEmail, sendOrderStatusUpdateEmail } from "../utils/email.js";
 import mongoose from "mongoose";
-// Read environment variables once at module load time
-const NODE_ENV = process.env.NODE_ENV;
-import { createOrderStatusNotification, } from "../utils/notificationService.js";
-import { notifyNewOrderPlaced, notifyOrderStatusChanged, } from "../utils/adminNotificationService.js";
+// queue producers (BullMQ)
+import { enqueueEmailOrderPlaced, enqueueEmailOrderStatusUpdate, } from "../queues/producers/emailProducers.js";
+import { enqueueAdminNewOrderPlaced, enqueueAdminOrderStatusChanged, } from "../queues/producers/adminNotificationProducers.js";
+import { enqueueUserOrderStatusNotification, } from "../queues/producers/userNotificationProducers.js";
 import { createOrderSchema } from "../validators/order.js";
+const NODE_ENV = process.env.NODE_ENV;
 export const addOrder = asyncHandler(async (req, res) => {
     const { error } = createOrderSchema.validate(req.body);
     if (error) {
@@ -24,6 +24,7 @@ export const addOrder = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error("Shipping and billing address are required");
     }
+    // Use MongoDB transaction in production only (your original logic)
     const useTxn = NODE_ENV === "production";
     const session = useTxn ? await mongoose.startSession() : null;
     if (session)
@@ -36,17 +37,19 @@ export const addOrder = asyncHandler(async (req, res) => {
             paymentMethod: paymentMethod || "paystack",
             shippingAddress,
             billingAddress,
-            // leave: status="New", paymentStatus="Pending" via defaults
+            // status="New", paymentStatus="Pending" via schema defaults
         });
         const createdOrder = session ? await order.save({ session }) : await order.save();
+        // decrement stock
         for (const item of orderItems) {
             const product = session
                 ? await Product.findById(item.product).session(session)
                 : await Product.findById(item.product);
             if (!product)
                 throw new Error("Product not found");
-            if (product.stock < item.qty)
+            if (product.stock < item.qty) {
                 throw new Error(`Insufficient stock for product: ${product.name}`);
+            }
             product.stock -= item.qty;
             if (session)
                 await product.save({ session });
@@ -57,13 +60,29 @@ export const addOrder = asyncHandler(async (req, res) => {
             await session.commitTransaction();
             session.endSession();
         }
-        const user = await User.findById(req.user._id);
+        // fetch user once for email + names
+        const user = await User.findById(req.user._id).select("email name");
+        const orderId = createdOrder._id.toString();
+        const dedupeBase = `order_${orderId}`;
+        // OFFLOAD to BullMQ — these are fast "enqueue" calls (non-blocking)
         if (user?.email) {
-            await sendOrderPlacedEmail({ email: user.email, name: user.name }, { _id: createdOrder._id.toString(), totalAmount: createdOrder.totalAmount, status: createdOrder.status });
+            await enqueueEmailOrderPlaced({
+                to: user.email,
+                userName: user.name,
+                orderId,
+                totalAmount: createdOrder.totalAmount,
+                status: createdOrder.status,
+                dedupeKey: `${dedupeBase}_email_placed`,
+            });
         }
-        if (user) {
-            await notifyNewOrderPlaced(createdOrder._id.toString(), createdOrder.totalAmount, user.name, user.email);
-        }
+        // Admin fanout (BullMQ worker queries admins or you pass ids in producer)
+        await enqueueAdminNewOrderPlaced({
+            orderId,
+            orderAmount: createdOrder.totalAmount,
+            customerName: user?.name ?? "Customer",
+            customerEmail: user?.email ?? "",
+            dedupeKey: `${dedupeBase}_admin_new-order`,
+        });
         res.status(201).json(createdOrder);
     }
     catch (err) {
@@ -83,7 +102,6 @@ export const getMyOrders = asyncHandler(async (req, res) => {
         billingAddress: order.billingAddress,
     })));
 });
-// NOTE: no payOrder here — payments are handled via Paystack controller
 export const getOrders = asyncHandler(async (req, res) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
@@ -150,8 +168,10 @@ export const updateOrder = asyncHandler(async (req, res) => {
         res.status(404);
         throw new Error("Order not found");
     }
-    const statusChanged = req.body.status && req.body.status !== order.status;
-    const paymentStatusChanged = req.body.paymentStatus && req.body.paymentStatus !== order.paymentStatus;
+    const prevStatus = order.status;
+    const prevPaymentStatus = order.paymentStatus;
+    const statusChanged = req.body.status && req.body.status !== prevStatus;
+    const paymentStatusChanged = req.body.paymentStatus && req.body.paymentStatus !== prevPaymentStatus;
     order.status = req.body.status ?? order.status;
     order.paymentStatus = req.body.paymentStatus ?? order.paymentStatus;
     order.orderItems = req.body.orderItems ?? order.orderItems;
@@ -159,21 +179,38 @@ export const updateOrder = asyncHandler(async (req, res) => {
     order.paymentMethod = req.body.paymentMethod ?? order.paymentMethod;
     const updatedOrder = await order.save();
     if ((statusChanged || paymentStatusChanged) && order.user?.email) {
-        await sendOrderStatusUpdateEmail({ email: order.user.email, name: order.user.name }, {
-            _id: order._id.toString(),
+        const orderId = order._id.toString();
+        const dedupeBase = `order:${orderId}`;
+        // Email offloaded
+        await enqueueEmailOrderStatusUpdate({
+            to: order.user.email,
+            userName: order.user.name,
+            orderId,
             totalAmount: order.totalAmount,
             status: order.status,
             paymentStatus: order.paymentStatus,
+            dedupeKey: `${dedupeBase}_email_status_${order.status}_${order.paymentStatus ?? ""}`,
         });
-        if (statusChanged && order.user) {
-            await createOrderStatusNotification(order.user.toString(), order._id.toString(), order.status, {
-                paymentStatus: order.paymentStatus,
-                totalAmount: order.totalAmount,
+        if (statusChanged) {
+            // User in-app notification (same as your createOrderStatusNotification)
+            await enqueueUserOrderStatusNotification({
+                userId: String(order.user?._id ?? order.user),
+                orderId,
+                status: order.status,
+                extra: {
+                    paymentStatus: order.paymentStatus,
+                    totalAmount: order.totalAmount,
+                },
+                dedupeKey: `${dedupeBase}_user_status_${order.status}`,
             });
-            const user = await User.findById(order.user);
-            if (user) {
-                await notifyOrderStatusChanged(order._id.toString(), order.status, req.body.status || order.status, order.totalAmount, user.name);
-            }
+            await enqueueAdminOrderStatusChanged({
+                orderId,
+                oldStatus: prevStatus,
+                newStatus: order.status,
+                orderAmount: order.totalAmount,
+                customerName: order.user?.name ?? "Customer",
+                dedupeKey: `${dedupeBase}_admin_status_${prevStatus}_to_${order.status}`,
+            });
         }
     }
     res.json(updatedOrder);
@@ -197,13 +234,38 @@ export const cancelOrder = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error("Order is already cancelled");
     }
+    const prevStatus = order.status;
     order.status = "Cancelled";
     const updatedOrder = await order.save();
+    const orderId = order._id.toString();
+    const dedupeBase = `order:${orderId}`;
     if (order.user?.email) {
-        await sendOrderStatusUpdateEmail({ email: order.user.email, name: order.user.name }, { _id: order._id.toString(), totalAmount: order.totalAmount, status: order.status });
+        await enqueueEmailOrderStatusUpdate({
+            to: order.user.email,
+            userName: order.user.name,
+            orderId,
+            totalAmount: order.totalAmount,
+            status: order.status,
+            paymentStatus: order.paymentStatus,
+            dedupeKey: `${dedupeBase}_email_status_Cancelled`,
+        });
     }
-    await createOrderStatusNotification(order.user._id.toString(), order._id.toString(), "cancelled", {
-        totalAmount: order.totalAmount,
+    // User notification
+    await enqueueUserOrderStatusNotification({
+        userId: String(order.user?._id ?? order.user),
+        orderId,
+        status: "cancelled",
+        extra: { totalAmount: order.totalAmount },
+        dedupeKey: `${dedupeBase}_user_status_cancelled`,
+    });
+    // Admin audit
+    await enqueueAdminOrderStatusChanged({
+        orderId,
+        oldStatus: prevStatus,
+        newStatus: "Cancelled",
+        orderAmount: order.totalAmount,
+        customerName: order.user?.name ?? "Customer",
+        dedupeKey: `${dedupeBase}_admin_status_${prevStatus}_to_Cancelled`,
     });
     res.json(updatedOrder);
 });

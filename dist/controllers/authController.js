@@ -11,7 +11,7 @@ import { PasswordValidationService } from '../utils/passwordValidation.js';ller.
 import asyncHandler from 'express-async-handler';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
-import { sendCustomEmail } from '../utils/email.js';
+// import { sendCustomEmail } from '../utils/email.js'; // moved to queue workers
 import { registerSchema, loginSchema } from '../validators/auth.js';
 import { generatetoken
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
@@ -20,21 +20,28 @@ import { generatetoken
 // rotateRefreshToken, 
 // revokeRefreshToken
  } from '../utils/tokenService.js';
-import { AppError, AuthenticationError, DuplicateError, SAFE_ERROR_MESSAGES, ValidationError } from '../utils/errorUtils.js';
+import { AuthenticationError, DuplicateError, SAFE_ERROR_MESSAGES, ValidationError } from '../utils/errorUtils.js';
+import { PasswordValidationService } from '../utils/passwordValidation.js';
+// NEW: throttle + email producers for queued emails
+import { throttleOnce } from '../utils/throttle.js';
+import { enqueueEmailVerification, enqueuePasswordResetEmail } from '../queues/producers/emailProducers.js';
 // Read environment variables once at module load time
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5000';
 const NODE_ENV = process.env.NODE_ENV;
+// Throttle windows (seconds)
+const VERIFY_EMAIL_THROTTLE_SEC = 10 * 60; // 10 minutes
+const RESET_EMAIL_THROTTLE_SEC = 10 * 60; // 10 minutes
 const registerUser = asyncHandler(async (req, res) => {
     const { error } = registerSchema.validate(req.body);
     if (error) {
         throw new ValidationError(SAFE_ERROR_MESSAGES.VALIDATION_FAILED);
     }
     const { name, email, password, role } = req.body;
-    // TEMPORARILY DISABLED: Enhanced password validation for frontend compatibility
-    // const passwordValidation = PasswordValidationService.validatePassword(password);
-    // if (!passwordValidation.isValid) {
-    //     throw new ValidationError('Password does not meet security requirements');
-    // }
+    // Password strength checks (kept as in your latest version)
+    const passwordValidation = PasswordValidationService.validatePassword(password);
+    if (!passwordValidation.isValid) {
+        throw new ValidationError('Password does not meet security requirements');
+    }
     if (role && role !== 'user') {
         throw new AuthenticationError('Invalid registration request');
     }
@@ -52,16 +59,23 @@ const registerUser = asyncHandler(async (req, res) => {
         emailVerificationToken,
         emailVerified: false
     });
-    // Send verification email
-    const verifyUrl = `${FRONTEND_URL}/verify-email?token=${emailVerificationToken}&email=${encodeURIComponent(email)}`;
-    const html = `<p>Welcome! Please <a href="${verifyUrl}">verify your email</a> to activate your account.</p>`;
-    try {
-        await sendCustomEmail(email, 'Verify Your Email', html);
+    // SERVER-SIDE THROTTLE: verification email (key by email)
+    const throttleKey = `auth:verify:${email.toLowerCase()}`;
+    const { allowed } = await throttleOnce(throttleKey, VERIFY_EMAIL_THROTTLE_SEC);
+    if (allowed) {
+        // Enqueue verification email (idempotent per user+token)
+        await enqueueEmailVerification({
+            to: email,
+            userName: name,
+            token: emailVerificationToken,
+            frontendUrl: FRONTEND_URL,
+            userId: String(user._id),
+        });
     }
-    catch (error) {
-        // Delete the created user if email sending fails
-        await user.deleteOne();
-        throw new AppError('Unable to send verification email', 500, 'EMAIL_ERROR');
+    else {
+        if (NODE_ENV !== 'production') {
+            console.log(`Verification email throttled for ${email}`);
+        }
     }
     res.status(201).json({
         _id: user._id,
@@ -153,13 +167,29 @@ const forgotPassword = asyncHandler(async (req, res) => {
         res.status(200).json({ message: 'If that email is registered, a reset link has been sent.' });
         return;
     }
+    // SERVER-SIDE THROTTLE: reset email (key by userId)
+    const resetThrottleKey = `auth:reset:${String(user._id)}`;
+    const { allowed } = await throttleOnce(resetThrottleKey, RESET_EMAIL_THROTTLE_SEC);
+    // Issue/reset token (keep your existing behavior)
     const token = crypto.randomBytes(32).toString('hex');
     user.passwordResetToken = token;
     user.passwordResetExpires = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
     await user.save();
-    const resetUrl = `${FRONTEND_URL}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
-    const html = `<p>You requested a password reset. <a href="${resetUrl}">Click here to reset your password</a>. This link is valid for 1 hour.</p>`;
-    await sendCustomEmail(email, 'Password Reset Request', html);
+    if (allowed) {
+        // Enqueue password reset email (idempotent per user+token)
+        await enqueuePasswordResetEmail({
+            to: user.email,
+            userName: user.name,
+            token,
+            frontendUrl: FRONTEND_URL,
+            userId: String(user._id),
+        });
+    }
+    else {
+        if (NODE_ENV !== 'production') {
+            console.log(`Password reset email throttled for user ${user._id}`);
+        }
+    }
     res.status(200).json({ message: 'If that email is registered, a reset link has been sent.' });
 });
 const resetPassword = asyncHandler(async (req, res) => {
@@ -186,12 +216,12 @@ const changePassword = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error('Current password is incorrect');
     }
-    // TEMPORARILY DISABLED: Enhanced password validation for frontend compatibility
-    // const passwordValidation = PasswordValidationService.validatePassword(newPassword);
-    // if (!passwordValidation.isValid) {
-    //     res.status(400);
-    //     throw new Error(`New password is too weak: ${passwordValidation.errors.join(', ')}`);
-    // }
+    // Password strength checks (kept as in your latest version)
+    const passwordValidation = PasswordValidationService.validatePassword(newPassword);
+    if (!passwordValidation.isValid) {
+        res.status(400);
+        throw new Error(`New password is too weak: ${passwordValidation.errors.join(', ')}`);
+    }
     // Check if new password is same as current
     if (await user.matchPassword(newPassword)) {
         res.status(400);
@@ -258,7 +288,7 @@ const verifyEmail = asyncHandler(async (req, res) => {
 // });
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
 // Update logout to handle refresh tokens
-const logoutUser = asyncHandler(async (req, res) => {
+const logoutUser = asyncHandler(async (_req, res) => {
     // const refreshToken = req.cookies.refreshToken;
     // if (refreshToken) {
     //     const userId = await verifyRefreshToken(refreshToken);
