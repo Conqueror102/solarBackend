@@ -126,100 +126,203 @@ const deleteUser = asyncHandler(async (req, res) => {
  * Get user settings (preferences)
  */
 const getUserSettings = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
+    // FIX: Use the user object directly from the middleware
+    const user = req.user;
+    if (user) {
+        res.json(user.preferences || {});
     }
-    res.json(user.preferences || {});
+    else {
+        res.status(401);
+        throw new Error('Not authorized');
+    }
 });
+// const getUserSettings = asyncHandler(async (req: Request, res: Response) => {
+//   const user = await User.findById((req as any).user._id);
+//   if (!user) {
+//     res.status(404);
+//     throw new Error('User not found');
+//   }
+//   res.json(user.preferences || {});
+// });
 /**
  * Update user settings (preferences)
  */
 const updateUserSettings = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
+    // FIX: Use the user object directly from the middleware
+    const user = req.user;
+    if (user) {
+        user.preferences = req.body.preferences || user.preferences;
+        await user.save();
+        res.json(user.preferences);
     }
-    user.preferences = req.body.preferences || user.preferences;
-    await user.save();
-    res.json(user.preferences);
+    else {
+        res.status(401);
+        throw new Error('Not authorized');
+    }
 });
+// const updateUserSettings = asyncHandler(async (req: Request, res: Response) => {
+//   const user = await User.findById((req as any).user._id);
+//   if (!user) {
+//     res.status(404);
+//     throw new Error('User not found');
+//   }
+//   user.preferences = req.body.preferences || user.preferences;
+//   await user.save();
+//   res.json(user.preferences);
+// });
 /**
  * Get addresses
  */
 const getAddresses = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (!user) {
+    // The protect middleware attaches the full user document to req.user
+    // So req.user._id contains the user ID
+    const user = req.user;
+    console.log("User from protect middleware:", user);
+    console.log("User ID:", user._id);
+    console.log("Type of user._id:", typeof user._id);
+    // The user is already fetched by the protect middleware
+    // But if you need to refetch with addresses specifically:
+    const userWithAddresses = await User.findById(user._id).select("addresses");
+    if (!userWithAddresses) {
         res.status(404);
-        throw new Error('User not found');
+        throw new Error("User not found");
     }
-    res.json(user.addresses || []);
+    res.json(userWithAddresses.addresses || []);
 });
+// const getAddresses = asyncHandler(async (req: Request, res: Response) => {
+//   const user = await User.findById((req as any).user._id);
+//   if (!user) {
+//     res.status(404);
+//     throw new Error('User not found');
+//   }
+//   res.json(user.addresses || []);
+// });
 /**
  * Add address
  */
 const addAddress = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
+    // FIX: Use the user object directly from the middleware
+    const user = req.user;
+    if (user) {
+        user.addresses.push(req.body);
+        await user.save();
+        res.status(201).json(user.addresses);
     }
-    user.addresses.push(req.body);
-    await user.save();
-    res.status(201).json(user.addresses);
+    else {
+        res.status(401);
+        throw new Error('Not authorized');
+    }
 });
+// const addAddress = asyncHandler(async (req: Request, res: Response) => {
+//   const user = await User.findById((req as any).user._id);
+//   if (!user) {
+//     res.status(404);
+//     throw new Error('User not found');
+//   }
+//   user.addresses.push(req.body);
+//   await user.save();
+//   res.status(201).json(user.addresses);
+// });
 /**
  * Update address
  */
 const updateAddress = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
+    // FIX: Use the user object directly from the middleware
+    const user = req.user;
+    if (user) {
+        const address = user.addresses.find((addr) => addr._id.toString() === req.params.addressId);
+        if (!address) {
+            res.status(404);
+            throw new Error('Address not found');
+        }
+        Object.assign(address, req.body);
+        await user.save();
+        res.json(user.addresses);
     }
-    const address = user.addresses.find((addr) => addr._id.toString() === req.params.addressId);
-    if (!address) {
-        res.status(404);
-        throw new Error('Address not found');
+    else {
+        res.status(401);
+        throw new Error('Not authorized');
     }
-    Object.assign(address, req.body);
-    await user.save();
-    res.json(user.addresses);
 });
+// const updateAddress = asyncHandler(async (req: Request, res: Response) => {
+//   const user = await User.findById((req as any).user._id);
+//   if (!user) {
+//     res.status(404);
+//     throw new Error('User not found');
+//   }
+//   const address = user.addresses.find((addr: any) => addr._id.toString() === req.params.addressId);
+//   if (!address) {
+//     res.status(404);
+//     throw new Error('Address not found');
+//   }
+//   Object.assign(address, req.body);
+//   await user.save();
+//   res.json(user.addresses);
+// });
 /**
  * Delete address
  */
 const deleteAddress = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
+    // FIX: Use the user object directly from the middleware
+    const user = req.user;
+    if (user) {
+        user.addresses = user.addresses.filter((addr) => addr._id.toString() !== req.params.addressId);
+        await user.save();
+        res.json({ message: 'Address removed successfully' });
     }
-    user.addresses = user.addresses.filter((addr) => addr._id.toString() !== req.params.addressId);
-    await user.save();
-    res.json(user.addresses);
+    else {
+        res.status(401);
+        throw new Error('Not authorized');
+    }
 });
+// const deleteAddress = asyncHandler(async (req: Request, res: Response) => {
+//   const user = await User.findById((req as any).user._id);
+//   if (!user) {
+//     res.status(404);
+//     throw new Error('User not found');
+//   }
+//   user.addresses = user.addresses.filter((addr: any) => addr._id.toString() !== req.params.addressId);
+//   await user.save();
+//   res.json(user.addresses);
+// });
 /**
  * Set default address
  */
 const setDefaultAddress = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-        res.status(404);
-        throw new Error('User not found');
+    // FIX: Use the user object directly from the middleware
+    const user = req.user;
+    if (user) {
+        user.addresses.forEach((addr) => { addr.isDefault = false; });
+        const address = user.addresses.find((addr) => addr._id.toString() === req.params.addressId);
+        if (!address) {
+            res.status(404);
+            throw new Error('Address not found');
+        }
+        address.isDefault = true;
+        await user.save();
+        res.json(user.addresses);
     }
-    user.addresses.forEach((addr) => { addr.isDefault = false; });
-    const address = user.addresses.find((addr) => addr._id.toString() === req.params.addressId);
-    if (!address) {
-        res.status(404);
-        throw new Error('Address not found');
+    else {
+        res.status(401);
+        throw new Error('Not authorized');
     }
-    address.isDefault = true;
-    await user.save();
-    res.json(user.addresses);
 });
+// const setDefaultAddress = asyncHandler(async (req: Request, res: Response) => {
+//   const user = await User.findById((req as any).user._id);
+//   if (!user) {
+//     res.status(404);
+//     throw new Error('User not found');
+//   }
+//   user.addresses.forEach((addr: any) => { addr.isDefault = false; });
+//   const address = user.addresses.find((addr: any) => addr._id.toString() === req.params.addressId);
+//   if (!address) {
+//     res.status(404);
+//     throw new Error('Address not found');
+//   }
+//   address.isDefault = true;
+//   await user.save();
+//   res.json(user.addresses);
+// });
 /**
  * Deactivate user
  */

@@ -262,6 +262,7 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
     if (order) {
       await order.deleteOne();
     res.json({ message: "Order removed" });
+    return
     }
     res.status(404);
     throw new Error("Order not found");

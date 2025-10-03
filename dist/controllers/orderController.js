@@ -220,6 +220,7 @@ export const deleteOrder = asyncHandler(async (_req, res) => {
     if (order) {
         await order.deleteOne();
         res.json({ message: "Order removed" });
+        return;
     }
     res.status(404);
     throw new Error("Order not found");

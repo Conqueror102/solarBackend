@@ -203,19 +203,25 @@ const updateUserSettings = asyncHandler(async (req: Request, res: Response) => {
 /**
  * Get addresses
  */
-
 const getAddresses = asyncHandler(async (req: Request, res: Response) => {
-  // FIX: The 'protect' middleware has already found the user and attached it to req.user.
-  // We don't need to look them up in the database again.
-  const user = (req as any).user;
-
-  if (user && user.addresses) {
-    res.json(user.addresses);
-  } else {
-    // If the user object somehow doesn't exist, it's an auth problem.
-    res.status(401);
-    throw new Error('Not authorized or user not found');
-  }
+    // The protect middleware attaches the full user document to req.user
+    // So req.user._id contains the user ID
+    const user = (req as any).user;
+    
+    console.log("User from protect middleware:", user);
+    console.log("User ID:", user._id);
+    console.log("Type of user._id:", typeof user._id);
+    
+    // The user is already fetched by the protect middleware
+    // But if you need to refetch with addresses specifically:
+    const userWithAddresses = await User.findById(user._id).select("addresses");
+    
+    if (!userWithAddresses) {
+      res.status(404);
+      throw new Error("User not found");
+    }
+  
+    res.json(userWithAddresses.addresses || []);
 });
 
 // const getAddresses = asyncHandler(async (req: Request, res: Response) => {
