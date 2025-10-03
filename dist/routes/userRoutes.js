@@ -16,20 +16,20 @@ router.patch('/customers/:id/deactivate', protect, requireRoles(['admin', 'super
 router.patch('/customers/:id/reactivate', protect, requireRoles(['admin', 'superadmin']), reactivateUser);
 // Route for bulk deactivating customers
 router.patch('/customers/bulk-deactivate', protect, requireRoles(['admin', 'superadmin']), bulkDeactivateUsers);
+router.route('/settings')
+    .get(protect, getUserSettings)
+    .put(protect, updateUserSettings);
+router.route('/addresses')
+    .get(protect, getAddresses)
+    .post(protect, addAddress);
+router.route('/addresses/:addressId')
+    .put(protect, updateAddress)
+    .delete(protect, deleteAddress);
+router.route('/addresses/:addressId/default')
+    .put(protect, setDefaultAddress);
 router.route('/:id')
     .get(protect, requireRoles(['admin', 'superadmin']), getUserById)
     .put(protect, requireRole('superadmin'), updateUser)
     .delete(protect, requireRole('superadmin'), deleteUser);
 router.get('/:id/orders', protect, requireRoles(['admin', 'superadmin']), getUserOrders);
-router.route('/settings')
-    .get(protect, getUserSettings)
-    .put(protect, updateUserSettings);
-router.route('/addresses')
-    .get(protect, requireRoles(['user', 'admin', 'superadmin']), getAddresses)
-    .post(protect, requireRoles(['user', 'admin', 'superadmin']), addAddress);
-router.route('/addresses/:addressId')
-    .put(protect, requireRoles(['user', 'admin', 'superadmin']), updateAddress)
-    .delete(protect, requireRoles(['user', 'admin', 'superadmin']), deleteAddress);
-router.route('/addresses/:addressId/default')
-    .put(protect, requireRoles(['user', 'admin', 'superadmin']), setDefaultAddress);
 export default router;
