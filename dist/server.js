@@ -77,7 +77,7 @@ const allowedOrigins = [
     "http://localhost:8080", // local dev
     "http://localhost:3000", // local dev
     "http://localhost:3001", // local dev
-    "https://your-frontend.onrender.com", // deployed frontend
+    "https://onye-solar.vercel.app", // deployed frontend
 ];
 app.use(cors({
     origin: (origin, callback) => {
