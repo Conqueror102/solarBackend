@@ -1,0 +1,696 @@
+// src/config/redis.ts
+import Redis from 'ioredis';
+
+// Environment setup
+const url = process.env.REDIS_URL;
+if (!url) {
+  throw new Error("❌ REDIS_URL is not set in environment variables");
+}
+
+const redisUrl: string = url;
+const isTls = redisUrl.startsWith('rediss://');
+
+/**
+ * Base configuration for all Redis connections
+ * Optimized for Upstash Redis
+ */
+const baseConfig = {
+  // TLS configuration
+  ...(isTls ? { 
+    tls: { 
+      rejectUnauthorized: true 
+    } 
+  } : {}),
+  
+  // Upstash compatibility settings
+  enableReadyCheck: false, // Upstash doesn't support INFO command
+  enableOfflineQueue: true,
+  
+  // Connection settings
+  family: 4, // Force IPv4
+  connectTimeout: 20000,
+  keepAlive: 30000, // Upstash closes idle connections after 30s
+  lazyConnect: true,
+  
+  // Retry strategy with exponential backoff
+  retryStrategy: (attempt: number) => {
+    if (attempt > 10) {
+      console.error('[Redis] Max retry attempts reached, giving up');
+      return null;
+    }
+    const delay = Math.min(1000 * 2 ** attempt, 15000) + Math.floor(Math.random() * 300);
+    console.warn(`[Redis] Retry attempt ${attempt}, waiting ${delay}ms`);
+    return delay;
+  },
+  
+  // Reconnect on specific errors
+  reconnectOnError: (err: Error) => {
+    const targetErrors = /READONLY|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i;
+    if (targetErrors.test(err.message)) {
+      console.warn(`[Redis] Reconnecting due to: ${err.message}`);
+      return true;
+    }
+    return false;
+  },
+};
+
+/**
+ * Creates a new Redis connection for BullMQ queues/workers
+ * Each queue/worker should have its own connection
+ */
+export function createRedisConnection(): Redis {
+  const connection = new Redis(redisUrl, {
+    ...baseConfig,
+    maxRetriesPerRequest: null, // CRITICAL for BullMQ blocking commands
+    enableAutoPipelining: false, // Disable for BullMQ compatibility
+    commandTimeout: 20000, // Reduced from 25s - better for Upstash
+  });
+  
+  // Error handling to prevent crashes
+  connection.on('error', (err) => {
+    console.error('[Redis BullMQ] Error:', err.message);
+  });
+  
+  connection.on('connect', () => {
+    console.log('[Redis BullMQ] Connected');
+  });
+  
+  connection.on('close', () => {
+    console.warn('[Redis BullMQ] Connection closed');
+  });
+  
+  return connection;
+}
+
+/**
+ * Shared Redis client for caching, health checks, and general operations
+ * NOT for BullMQ - use createRedisConnection() for that
+ */
+export const redis = new Redis(redisUrl, {
+  ...baseConfig,
+  maxRetriesPerRequest: 3, // Limited retries for non-blocking operations
+  enableAutoPipelining: true, // Better performance for regular operations
+  commandTimeout: 10000, // Shorter timeout for quick operations
+});
+
+// Event handlers for shared client
+redis.on('error', (err) => {
+  console.error('[Redis Shared] Error:', err.message);
+});
+
+redis.on('connect', () => {
+  console.log('[Redis Shared] Connected to Upstash');
+});
+
+redis.on('ready', () => {
+  console.log('[Redis Shared] Ready for commands');
+});
+
+redis.on('close', () => {
+  console.log('[Redis Shared] Connection closed');
+});
+
+redis.on('reconnecting', (delay: number) => {
+  console.log(`[Redis Shared] Reconnecting in ${delay}ms...`);
+});
+
+/**
+ * Connection state management
+ */
+let heartbeat: NodeJS.Timeout | null = null;
+let isConnecting = false;
+
+/**
+ * Ensures Redis connection is established and maintains it
+ * Non-blocking - won't throw if connection fails
+ */
+export async function ensureRedisConnected(): Promise<void> {
+  // Prevent concurrent connection attempts
+  if (isConnecting) {
+    console.log('[Redis] Connection attempt already in progress');
+    return;
+  }
+
+  try {
+    isConnecting = true;
+
+    // Check current status
+    if (redis.status === 'ready') {
+      console.log('[Redis] Already connected and ready');
+      startHeartbeat(); // Ensure heartbeat is running
+      return;
+    }
+
+    if (redis.status === 'connecting') {
+      console.log('[Redis] Waiting for existing connection...');
+      try {
+        await waitForConnection(redis, 10000);
+        startHeartbeat();
+        return;
+      } catch (err: any) {
+        console.warn('[Redis] Connection wait timeout, will retry later');
+        return; // Don't throw, let it retry naturally
+      }
+    }
+
+    // Establish new connection
+    console.log('[Redis] Establishing connection...');
+    await Promise.race([
+      redis.connect(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connect timeout')), 10000)
+      )
+    ]);
+    
+    // Verify connection with ping (with timeout)
+    const pingResult = await Promise.race([
+      redis.ping(),
+      new Promise<string>((_, reject) => 
+        setTimeout(() => reject(new Error('Ping timeout')), 5000)
+      )
+    ]);
+    console.log(`[Redis] Connection verified: PING = ${pingResult}`);
+
+    // Start heartbeat to prevent idle timeout
+    startHeartbeat();
+
+  } catch (error: any) {
+    console.error('[Redis] Connection failed:', error.message);
+    console.log('[Redis] Will retry on next operation');
+    // Don't throw - let the app start and Redis will reconnect automatically
+  } finally {
+    isConnecting = false;
+  }
+}
+
+/**
+ * Wait for Redis connection to be ready
+ */
+function waitForConnection(client: Redis, timeout: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Connection timeout after ' + timeout + 'ms'));
+    }, timeout);
+
+    const onReady = () => {
+      clearTimeout(timeoutId);
+      client.off('error', onError);
+      resolve();
+    };
+
+    const onError = (err: Error) => {
+      clearTimeout(timeoutId);
+      client.off('ready', onReady);
+      reject(err);
+    };
+
+    client.once('ready', onReady);
+    client.once('error', onError);
+  });
+}
+
+/**
+ * Starts heartbeat to keep connection alive
+ * Upstash closes connections after 30s of inactivity
+ */
+function startHeartbeat(): void {
+  if (heartbeat) {
+    console.log('[Redis] Heartbeat already running');
+    return;
+  }
+
+  heartbeat = setInterval(() => {
+    if (redis.status === 'ready') {
+      redis.ping().catch((err) => {
+        console.error('[Redis Heartbeat] Ping failed:', err.message);
+      });
+    }
+  }, 20000); // Ping every 20s (safely under 30s timeout)
+
+  // Don't prevent Node.js from exiting
+  (heartbeat as any).unref?.();
+  
+  console.log('[Redis] Heartbeat started (20s interval)');
+}
+
+/**
+ * Gracefully close all Redis connections
+ */
+export async function closeRedisConnections(): Promise<void> {
+  console.log('[Redis] Shutting down connections...');
+  
+  // Stop heartbeat
+  if (heartbeat) {
+    clearInterval(heartbeat);
+    heartbeat = null;
+    console.log('[Redis] Heartbeat stopped');
+  }
+  
+  // Close shared connection
+  try {
+    if (redis.status !== 'end') {
+      await redis.quit();
+      console.log('[Redis] Shared connection closed gracefully');
+    }
+  } catch (err: any) {
+    console.error('[Redis] Error closing shared connection:', err.message);
+  }
+}
+
+// Graceful shutdown handlers
+process.on('SIGTERM', async () => {
+  console.log('[Process] SIGTERM received');
+  await closeRedisConnections();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('[Process] SIGINT received');
+  await closeRedisConnections();
+  process.exit(0);
+});
+
+// src/infra/queues.ts
+import { Queue, Worker, QueueEvents, JobsOptions, WorkerOptions, Processor } from 'bullmq';
+import { createRedisConnection } from '../config/redis.js';
+
+/**
+ * Default job options for all queues
+ */
+export const defaultJobOptions: JobsOptions = {
+  attempts: 5,
+  backoff: { 
+    type: 'exponential', 
+    delay: 2000 // Start with 2s, doubles each attempt
+  },
+  removeOnComplete: { 
+    age: 3600, // Keep completed jobs for 1 hour
+    count: 1000 // Keep max 1000 completed jobs
+  },
+  removeOnFail: { 
+    age: 86400 // Keep failed jobs for 24 hours
+  },
+};
+
+/**
+ * Creates a new BullMQ queue with isolated Redis connection
+ * Each queue gets its own connection to prevent blocking issues
+ * 
+ * @param name - Queue name
+ * @param overrides - Optional job options overrides
+ */
+export function makeQueue(
+  name: string,
+  overrides?: { defaultJobOptions?: Partial<JobsOptions> }
+): Queue {
+  const connection = createRedisConnection();
+  
+  const queue = new Queue(name, {
+    connection,
+    defaultJobOptions: {
+      ...defaultJobOptions,
+      ...(overrides?.defaultJobOptions ?? {}),
+    },
+  });
+
+  // Queue event handlers
+  queue.on('error', (err) => {
+    console.error(`[Queue:${name}] Error:`, err.message);
+  });
+
+  console.log(`[Queue:${name}] Created`);
+  
+  return queue;
+}
+
+/**
+ * Creates a BullMQ worker with isolated Redis connections
+ * Worker, QueueEvents each get their own connection
+ * 
+ * @param name - Queue name to process
+ * @param processor - Job processing function
+ * @param opts - Worker options (excludes connection)
+ */
+export function makeWorker<Data = any, Result = any>(
+  name: string,
+  processor: Processor<Data, Result>,
+  opts: Omit<WorkerOptions, 'connection'> = {}
+): { worker: Worker<Data, Result>; events: QueueEvents } {
+  
+  // Create separate connections for worker and events
+  const workerConnection = createRedisConnection();
+  const eventsConnection = createRedisConnection();
+
+  // Create worker
+  const worker = new Worker<Data, Result>(name, processor, {
+    connection: workerConnection,
+    lockDuration: 25000, // Must be < commandTimeout (25s)
+    concurrency: opts.concurrency ?? 1,
+    ...opts,
+  });
+
+  // Create queue events listener
+  const events = new QueueEvents(name, { 
+    connection: eventsConnection 
+  });
+
+  // Worker event handlers
+  worker.on('completed', (job) => {
+    console.log(`[Worker:${name}] ✅ Job ${job.id} completed successfully`);
+  });
+
+  worker.on('failed', (job, err) => {
+    console.error(`[Worker:${name}] ❌ Job ${job?.id} failed:`, err?.message);
+  });
+
+  worker.on('error', (err) => {
+    console.error(`[Worker:${name}] Worker error:`, err?.message);
+  });
+
+  worker.on('active', (job) => {
+    console.log(`[Worker:${name}] 🔄 Processing job ${job.id}`);
+  });
+
+  worker.on('stalled', (jobId) => {
+    console.warn(`[Worker:${name}] ⚠️ Job ${jobId} stalled`);
+  });
+
+  // Events handlers
+  events.on('error', (err) => {
+    console.error(`[Events:${name}] Error:`, err.message);
+  });
+
+  console.log(`[Worker:${name}] Started with concurrency ${opts.concurrency ?? 1}`);
+
+  return { worker, events };
+}
+
+/**
+ * Gracefully close a worker and its events
+ */
+export async function closeWorker(
+  worker: Worker,
+  events: QueueEvents
+): Promise<void> {
+  try {
+    await worker.close();
+    await events.close();
+    console.log('[Worker] Closed gracefully');
+  } catch (err: any) {
+    console.error('[Worker] Error closing:', err.message);
+  }
+}
+
+/**
+ * Gracefully close a queue
+ */
+export async function closeQueue(queue: Queue): Promise<void> {
+  try {
+    await queue.close();
+    console.log(`[Queue:${queue.name}] Closed gracefully`);
+  } catch (err: any) {
+    console.error(`[Queue:${queue.name}] Error closing:`, err.message);
+  }
+}
+
+
+import crypto from 'node:crypto';
+import { adminNotificationQueue } from '../adminNotificationQueue.js';
+import type { AdminNewOrderJob, AdminOrderStatusChangedJob } from '../../types/orderJobs.js';
+
+const hash = (s: string) => crypto.createHash('sha1').update(s).digest('hex');
+
+export async function enqueueAdminNewOrderPlaced(job: AdminNewOrderJob & { dedupeKey?: string }) {
+  const jobId = job.dedupeKey ?? hash(`admin:neworder:${job.orderId}`);
+  await adminNotificationQueue.add('newOrderPlaced', job, { jobId });
+}
+
+export async function enqueueAdminOrderStatusChanged(job: AdminOrderStatusChangedJob & { dedupeKey?: string }) {
+  const jobId = job.dedupeKey ?? hash(`admin:status:${job.orderId}:${job.oldStatus}->${job.newStatus}`);
+  await adminNotificationQueue.add('orderStatusChanged', job, { jobId });
+}
+
+
+export async function enqueueAdminNewUserRegistration(payload: {
+  userId: string;
+  userName: string;
+  userEmail: string;
+}) {
+  const jobId = hash(`admin:new_user:${payload.userId}`);
+  await adminNotificationQueue.add('admin.new_user_registration', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+export async function enqueueAdminUserActivity(payload: {
+  activityType: string;          // e.g. 'user_updated', 'user_deactivated'
+  userName?: string;
+  userEmail?: string;
+  details?: string;
+  changes?: string[];
+  dedupeKey?: string;
+}) {
+  const jobId = payload.dedupeKey ? hash(`admin:activity:${payload.dedupeKey}`) : undefined;
+  await adminNotificationQueue.add('admin.user_activity', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+
+// PRODUCT EVENTS
+export async function enqueueAdminProductAdded(payload: {
+  productId: string;
+  productName: string;
+  addedBy?: string;
+}) {
+  const jobId = hash(`admin:product_added:${payload.productId}`);
+  await adminNotificationQueue.add('admin.product_added', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+export async function enqueueAdminProductUpdated(payload: {
+  productId: string;
+  productName: string;
+  updatedBy?: string;
+  changes?: string[];
+}) {
+  const key = `${payload.productId}:${(payload.changes || []).join('|')}`;
+  const jobId = hash(`admin:product_updated:${key}`);
+  await adminNotificationQueue.add('admin.product_updated', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+export async function enqueueAdminLowStockAlert(payload: {
+  productId: string;
+  productName: string;
+  currentStock: number;
+  threshold: number;
+}) {
+  const jobId = hash(`admin:low_stock:${payload.productId}:${payload.currentStock}`);
+  await adminNotificationQueue.add('admin.low_stock_alert', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+export async function enqueueAdminOutOfStockAlert(payload: {
+  productId: string;
+  productName: string;
+}) {
+  const jobId = hash(`admin:out_of_stock:${payload.productId}`);
+  await adminNotificationQueue.add('admin.out_of_stock_alert', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+
+
+
+/**
+ * Enqueue: admin.brand_added
+ */
+export async function enqueueAdminBrandAdded(payload: {
+  brandId: string;
+  brandName: string;
+  addedBy?: string;
+}) {
+  const jobId = hash(`admin:brand_added:${payload.brandId}`);
+  await adminNotificationQueue.add('admin.brand_added', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+/**
+ * Enqueue: admin.brand_updated
+ */
+export async function enqueueAdminBrandUpdated(payload: {
+  brandId: string;
+  oldBrandName: string;
+  newBrandName: string;
+  updatedBy?: string;
+  changes?: string[]; // optional audit of changed fields
+}) {
+  const key = `${payload.brandId}:${payload.oldBrandName}->${payload.newBrandName}:${(payload.changes || []).join('|')}`;
+  const jobId = hash(`admin:brand_updated:${key}`);
+  await adminNotificationQueue.add('admin.brand_updated', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+
+/**
+ * Enqueue: admin.brand_deleted
+ */
+export async function enqueueAdminBrandDeleted(payload: {
+  brandId: string;
+  brandName: string;
+  deletedBy?: string;
+}) {
+  const jobId = hash(`admin:brand_deleted:${payload.brandId}`);
+  await adminNotificationQueue.add('admin.brand_deleted', payload, {
+    jobId,
+    attempts: 5,
+    backoff: { type: 'exponential', delay: 1000 },
+    removeOnComplete: true,
+    removeOnFail: false,
+  });
+}
+// src/workers/adminNotificationsWorker.ts
+import { makeWorker } from '../infra/bullmq.js';
+import type { AdminNewOrderJob, AdminOrderStatusChangedJob } from '../types/orderJobs.js';
+import {
+  notifyNewOrderPlaced,
+  notifyOrderStatusChanged,
+  notifyNewUserRegistration,
+  notifyUserActivity,
+  notifyProductAdded,
+  notifyProductUpdated,
+  notifyLowStockAlert,
+  notifyOutOfStockAlert,
+  notifyBrandAdded,
+  notifyBrandUpdated,
+  notifyBrandDeleted,
+} from '../utils/adminNotificationService.js';
+
+export const { worker: adminNotificationsWorker } = makeWorker(
+  'admin-notifications',
+  async (job) => {
+    switch (job.name) {
+      case 'newOrderPlaced': {
+        const d = job.data as AdminNewOrderJob;
+        await notifyNewOrderPlaced(d.orderId, d.orderAmount, d.customerName, d.customerEmail);
+        return { notified: true };
+      }
+
+      case 'orderStatusChanged': {
+        const d = job.data as AdminOrderStatusChangedJob;
+        await notifyOrderStatusChanged(d.orderId, d.oldStatus, d.newStatus, d.orderAmount, d.customerName);
+        return { notified: true };
+      }
+
+      case 'admin.new_user_registration': {
+        const d = job.data as { userId: string; userName: string; userEmail: string };
+        await notifyNewUserRegistration(d.userId, d.userName, d.userEmail);
+        return { notified: true };
+      }
+
+      case 'admin.user_activity': {
+        const d = job.data as {
+          activityType: string;
+          userName?: string;
+          userEmail?: string;
+          details?: string;
+          // changes?: string[]; // your service doesn't accept this; ignored here
+        };
+        await notifyUserActivity(d.activityType, d.userName ?? 'System', d.userEmail ?? '', d.details ?? '');
+        return { notified: true };
+      }
+
+      // ---------- Product events ----------
+      case 'admin.product_added': {
+        const d = job.data as { productId: string; productName: string; addedBy?: string };
+        await notifyProductAdded(d.productId, d.productName, d.addedBy ?? 'System');
+        return { notified: true };
+      }
+
+      case 'admin.product_updated': {
+        const d = job.data as { productId: string; productName: string; updatedBy?: string; changes?: string[] };
+        await notifyProductUpdated(d.productId, d.productName, d.updatedBy ?? 'System', d.changes ?? []);
+        return { notified: true };
+      }
+
+      case 'admin.low_stock_alert': {
+        const d = job.data as { productId: string; productName: string; currentStock: number; threshold: number };
+        await notifyLowStockAlert(d.productId, d.productName, d.currentStock, d.threshold);
+        return { notified: true };
+      }
+
+      case 'admin.out_of_stock_alert': {
+        const d = job.data as { productId: string; productName: string };
+        await notifyOutOfStockAlert(d.productId, d.productName);
+        return { notified: true };
+      }
+
+      
+case 'admin.brand_added': {
+    const d = job.data as { brandId: string; brandName: string; addedBy?: string };
+    await notifyBrandAdded(d.brandId, d.brandName, d.addedBy ?? 'System');
+    return { notified: true };
+  }
+  
+  case 'admin.brand_updated': {
+    const d = job.data as {
+      brandId: string;
+      oldBrandName: string;
+      newBrandName: string;
+      updatedBy?: string;
+      changes?: string[];
+    };
+    await notifyBrandUpdated(d.brandId, d.oldBrandName, d.newBrandName, d.updatedBy ?? 'System', d.changes ?? []);
+    return { notified: true };
+  }
+  
+  case 'admin.brand_deleted': {
+    const d = job.data as { brandId: string; brandName: string; deletedBy?: string };
+    await notifyBrandDeleted(d.brandId, d.brandName, d.deletedBy ?? 'System');
+    return { notified: true };
+  }     
+
+      default:
+        throw new Error(`Unknown admin job: ${job.name}`);
+    }
+  },
+  { concurrency: 10 }
+);

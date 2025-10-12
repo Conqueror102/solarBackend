@@ -18,22 +18,39 @@ import {
   notifyPaymentFailed,
 } from '../utils/adminNotificationService.js';
 
-// ---------- Idempotency (TTL-based, atomic) ----------
-const IDEMPOTENT_KEY_PREFIX = 'payments:processed:'; // key per event
+// ---------- Idempotency (Lock-based, two-phase) ----------
+const IDEMPOTENT_KEY_PREFIX = 'payments:processed:'; // durable marker
+const LOCK_KEY_PREFIX = 'payments:lock:';            // short-lived lock
 const IDEMPOTENT_TTL_SEC = 7 * 24 * 3600;            // 7 days
+const LOCK_TTL_SEC = 60;                             // 60 seconds processing window
 
-async function alreadyProcessed(id: string) {
-  // SET NX EX is atomic: returns 'OK' if set, null if existed
-  const ok = await redis.set(
+async function wasAlreadyProcessed(id: string): Promise<boolean> {
+  // Check if durable marker exists (read-only)
+  const exists = await redis.exists(`${IDEMPOTENT_KEY_PREFIX}${id}`);
+  return exists === 1;
+}
+
+async function acquireProcessingLock(id: string): Promise<boolean> {
+  // Try to acquire short-lived processing lock
+  const lockKey = `${LOCK_KEY_PREFIX}${id}`;
+  const acquired = await redis.set(lockKey, '1', 'EX', LOCK_TTL_SEC, 'NX');
+  return acquired === 'OK';
+}
+
+async function releaseProcessingLock(id: string): Promise<void> {
+  // Release lock on failure so retries can proceed
+  const lockKey = `${LOCK_KEY_PREFIX}${id}`;
+  await redis.del(lockKey);
+}
+
+async function markAsProcessed(id: string): Promise<void> {
+  // Write durable processed marker ONLY after successful handling
+  await redis.set(
     `${IDEMPOTENT_KEY_PREFIX}${id}`,
     '1',
-    'EX', IDEMPOTENT_TTL_SEC,
-    'NX'
+    'EX', IDEMPOTENT_TTL_SEC
   );
-  return !ok; // null => already processed
 }
-// markProcessed no longer needed with the pattern above
-async function markProcessed(_: string) { /* no-op */ }
 
 // ---------- Utils ----------
 function toNGN(amountKobo?: number) {
@@ -50,19 +67,21 @@ async function handleSuccess(order: any) {
   if (order.status === 'New') order.status = 'Processing';
   await order.save();
 
-  const user = await User.findById(order.user);
-  if (user?.email) {
-    await sendOrderStatusUpdateEmail(
-      { email: user.email, name: (user as any).name },
-      {
-        _id: order._id.toString(),
-        totalAmount: order.totalAmount,
-        status: order.status,
-        paymentStatus: order.paymentStatus,
-      }
-    );
-  }
+  // Only send email/notifications on first successful payment
   if (firstTime) {
+    const user = await User.findById(order.user);
+    if (user?.email) {
+      await sendOrderStatusUpdateEmail(
+        { email: user.email, name: (user as any).name },
+        {
+          _id: order._id.toString(),
+          totalAmount: order.totalAmount,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+        }
+      );
+    }
+    
     await createPaymentSuccessNotification(
       order.user.toString(),
       order._id.toString(),
@@ -115,6 +134,9 @@ async function handleFailed(order: any, reason: string) {
 }
 
 async function upsertTransaction(trxData: any) {
+  // Normalize status: Paystack uses 'success', our DB uses 'successful'
+  const normalizedStatus = trxData.status === 'success' ? 'successful' : trxData.status;
+  
   return Transaction.findOneAndUpdate(
     { transactionId: trxData.id },
     {
@@ -130,7 +152,7 @@ async function upsertTransaction(trxData: any) {
           email: trxData.customer?.email,
         },
         paidAt: trxData.paid_at,
-        status: trxData.status, // keep status for decisions below
+        status: normalizedStatus,
       },
     },
     { upsert: true, new: true }
@@ -144,68 +166,132 @@ export const { worker: paymentWorker } = makeWorker(
     if (job.name === 'verify_payment') {
       // VERIFY path (from GET /verify)
       const d = job.data as PaymentVerifyJob;
-      const verifyResp: any = await paystack.verify(d.reference);
-      const trx = verifyResp.data;
-
-      const order = await Order.findOne({ paystackReference: d.reference });
-      if (!order) return { ignored: 'order_not_found' };
-
-      const expectedKobo = Math.round((order.amountAtPayment ?? order.totalAmount) * 100);
-      const currency = order.currency || 'NGN';
-
-      if (trx.status === 'success' && trx.amount === expectedKobo && trx.currency === currency) {
-        await handleSuccess(order);
-      } else if ((trx.status === 'failed' || trx.status === 'abandoned') && !order.isPaid) {
-        await handleFailed(order, trx.status === 'failed' ? 'Verification failed' : 'Payment abandoned');
+      const idKey = `${d.provider}:payment:${d.reference}`;
+      
+      // 1. Check durable marker first (fast path)
+      if (await wasAlreadyProcessed(idKey)) {
+        return { skipped: 'already_processed' };
       }
+      
+      // 2. Try to acquire processing lock
+      if (!(await acquireProcessingLock(idKey))) {
+        // Another worker is processing this right now
+        throw new Error('Lock acquisition failed - another worker processing');
+      }
+      
+      try {
+        // 3. Double-check after acquiring lock (another worker might have finished)
+        if (await wasAlreadyProcessed(idKey)) {
+          await releaseProcessingLock(idKey);
+          return { skipped: 'already_processed' };
+        }
+        
+        // 4. Do the actual work
+        const verifyResp: any = await paystack.verify(d.reference);
+        const trx = verifyResp.data;
 
-      return { verified: true, status: order.paymentStatus };
+        const order = await Order.findOne({ paystackReference: d.reference });
+        if (!order) {
+          await releaseProcessingLock(idKey);
+          return { ignored: 'order_not_found' };
+        }
+
+        const expectedKobo = Math.round((order.amountAtPayment ?? order.totalAmount) * 100);
+        const currency = order.currency || 'NGN';
+
+        if (trx.status === 'success' && trx.amount === expectedKobo && trx.currency === currency) {
+          await handleSuccess(order);
+        } else if ((trx.status === 'failed' || trx.status === 'abandoned') && !order.isPaid) {
+          await handleFailed(order, trx.status === 'failed' ? 'Verification failed' : 'Payment abandoned');
+        }
+        
+        // 5. Mark as processed (durable marker)
+        await markAsProcessed(idKey);
+        
+        // 6. Release lock
+        await releaseProcessingLock(idKey);
+
+        return { verified: true, status: order.paymentStatus };
+        
+      } catch (error) {
+        // On failure, release lock so retries can happen
+        await releaseProcessingLock(idKey);
+        throw error;
+      }
     }
 
     // WEBHOOK/EVENT path
     const d = job.data as PaymentEventJob;
-    const idKey = d.eventId || `${d.provider}:${d.reference}:${d.eventType}`;
-
-    if (await alreadyProcessed(idKey)) {
-      return { skipped: 'duplicate' };
+    const idKey = `${d.provider}:payment:${d.reference}`;
+    
+    // 1. Check durable marker first (fast path)
+    if (await wasAlreadyProcessed(idKey)) {
+      return { skipped: 'already_processed' };
     }
+    
+    // 2. Try to acquire processing lock
+    if (!(await acquireProcessingLock(idKey))) {
+      // Another worker is processing this right now
+      throw new Error('Lock acquisition failed - another worker processing');
+    }
+    
+    try {
+      // 3. Double-check after acquiring lock (another worker might have finished)
+      if (await wasAlreadyProcessed(idKey)) {
+        await releaseProcessingLock(idKey);
+        return { skipped: 'already_processed' };
+      }
+      
+      // 4. Do the actual work
+      // Single source of truth: verify with provider
+      const verifyResp: any = await paystack.verify(d.reference);
+      const trxData = verifyResp.data;
 
-    // Single source of truth: verify with provider
-    const verifyResp: any = await paystack.verify(d.reference);
-    const trxData = verifyResp.data;
+      // Upsert transaction (first-time insert keeps status/amount)
+      const trxDoc = await upsertTransaction(trxData);
 
-    // Upsert transaction (first-time insert keeps status/amount)
-    const trxDoc = await upsertTransaction(trxData);
+      // Update order if present
+      const order = await Order.findOne({ paystackReference: d.reference });
+      if (order) {
+        // Normalize status: Paystack uses 'success', our DB uses 'successful'
+        const normalizedStatus = trxData.status === 'success' ? 'successful' : trxData.status;
+        
+        if (normalizedStatus === 'successful') {
+          await handleSuccess(order);
+        } else if (normalizedStatus === 'failed') {
+          await handleFailed(order, 'failed');
+        } else if (normalizedStatus === 'refunded') {
+          order.paymentStatus = 'Refunded';
+          await order.save();
 
-    // Update order if present
-    const order = await Order.findOne({ paystackReference: d.reference });
-    if (order) {
-      if (trxDoc.status === 'successful' || trxData.status === 'success') {
-        await handleSuccess(order);
-      } else if (trxDoc.status === 'failed' || trxData.status === 'failed') {
-        await handleFailed(order, 'failed');
-      } else if (trxDoc.status === 'refunded' || trxData.status === 'refunded') {
-        order.paymentStatus = 'Refunded';
-        await order.save();
-
-        const user = await User.findById(order.user);
-        if (user?.email) {
-          await sendOrderStatusUpdateEmail(
-            { email: user.email, name: (user as any).name },
-            {
-              _id: order._id.toString(),
-              totalAmount: order.totalAmount,
-              status: order.status,
-              paymentStatus: order.paymentStatus,
-            }
-          );
+          const user = await User.findById(order.user);
+          if (user?.email) {
+            await sendOrderStatusUpdateEmail(
+              { email: user.email, name: (user as any).name },
+              {
+                _id: order._id.toString(),
+                totalAmount: order.totalAmount,
+                status: order.status,
+                paymentStatus: order.paymentStatus,
+              }
+            );
+          }
         }
       }
-    }
+      
+      // 5. Mark as processed (durable marker)
+      await markAsProcessed(idKey);
+      
+      // 6. Release lock
+      await releaseProcessingLock(idKey);
 
-    // With SET NX EX above, we already marked it — keep this for clarity/no-op
-    await markProcessed(idKey);
-    return { processed: d.eventType };
+      return { processed: d.eventType };
+      
+    } catch (error) {
+      // On failure, release lock so retries can happen
+      await releaseProcessingLock(idKey);
+      throw error;
+    }
   },
-  { concurrency: 20 }
+  { concurrency: 10 }
 );

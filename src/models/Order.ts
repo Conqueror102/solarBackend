@@ -84,6 +84,7 @@ const orderSchema = new Schema<IOrder>({
     ]
   },
   paystackReference: { type: String, default: null },
+  amountAtPayment: { type: Number, default: null },
   currency: { type: String, default: "NGN" },
   shippingAddress: { type: addressSchema, required: true },
   billingAddress: { type: addressSchema, required: true },

@@ -4,19 +4,20 @@
   "type": "module",
   "description": "Backend for Solar E-commerce App",
   "main": "server.js",
- "scripts": {
-  "clean": "rimraf dist",
-  "build": "npm run clean && tsc",
-  "start": "node dist/server.js",
-
-  "dev": "concurrently -k -n TSC,NODE \"npm:tsc:watch\" \"npm:serve\"",
-  "predev": "npm run build",
-  "tsc:watch": "tsc -w --preserveWatchOutput",
-  "serve": "nodemon --exec \"node -r dotenv/config dist/server.js\""
-},
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && tsc",
+    "start": "node dist/server.js",
+    "dev": "concurrently -k -n TSC,NODE \"npm:tsc:watch\" \"npm:serve\"",
+    "predev": "npm run build",
+    "tsc:watch": "tsc -w --preserveWatchOutput",
+    "serve": "nodemon --exec \"node -r dotenv/config dist/server.js\""
+  },
   "dependencies": {
     "@bull-board/api": "^6.13.0",
     "@bull-board/express": "^6.13.0",
+    "@getbrevo/brevo": "^3.0.1",
+    "@sendgrid/mail": "^8.1.6",
     "@sentry/node": "^9.40.0",
     "@types/cookie-parser": "^1.4.9",
     "@types/joi": "^17.2.2",
