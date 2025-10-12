@@ -82,7 +82,7 @@ export async function verifyPaystackPayment(req, res) {
 export async function paystackWebhook(req, res) {
     try {
         const headerSig = req.header("x-paystack-signature");
-        if (!headerSig)
+        if (!headerSig || headerSig.length === 0)
             return res.sendStatus(401);
         const raw = req.body;
         const computed = crypto.createHmac("sha512", PAYSTACK_SECRET).update(raw).digest("hex");
@@ -116,6 +116,7 @@ export async function paystackWebhook(req, res) {
                 : undefined,
             raw: event,
         });
+        console.log(`[Webhook] Processed ${eventType} for reference: ${reference}`);
         return res.sendStatus(200);
     }
     catch (err) {

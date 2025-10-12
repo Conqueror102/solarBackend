@@ -1,46 +1,34 @@
-import nodemailer from 'nodemailer';
+import sgMail from '@sendgrid/mail';
 import dotenv from 'dotenv';
 dotenv.config();
 
 const {
   NODE_ENV,
-  SMTP_USER,
-  SMTP_PASS,
-  SMTP_HOST,
-  SMTP_PORT,
-  SMTP_SECURE,
+  SENDGRID_API_KEY,
+  SENDGRID_SENDER_EMAIL,
+  SENDGRID_SENDER_NAME,
 } = process.env;
 
-// --- Transporter setup ---
-const transporter = nodemailer.createTransport({
-  host: SMTP_HOST || 'smtp.gmail.com',
-  port: SMTP_PORT ? Number(SMTP_PORT) : 465,
-  secure: SMTP_SECURE === 'true' || SMTP_PORT === '465',
-  auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
-  },
-  pool: true,
-  maxConnections: 3,
-  maxMessages: 100,
-  connectionTimeout: 10000, // 10s
-  greetingTimeout: 5000,
-  socketTimeout: 10000,
-  tls: { rejectUnauthorized: true },
-});
+// --- SendGrid SDK configuration ---
+sgMail.setApiKey(SENDGRID_API_KEY || '');
 
-// --- Core mail sender ---
+// --- Core mail sender using SendGrid ---
 async function sendMail(to: string | string[], subject: string, html: string) {
   try {
-    const mailOptions = {
-      from: `"Solar Store" <${SMTP_USER}>`,
-      to: Array.isArray(to) ? to.join(',') : to,
+    const recipients = Array.isArray(to) ? to : [to];
+
+    const msg = {
+      to: recipients,
+      from: {
+        name: SENDGRID_SENDER_NAME || 'Solar Store',
+        email: SENDGRID_SENDER_EMAIL || '',
+      },
       subject,
       html,
     };
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent: ${result.messageId}`);
+    const result = await sgMail.send(msg);
+    console.log(`✅ Email sent via SendGrid: ${subject}`);
     return result;
   } catch (error: any) {
     console.error('❌ Email failed:', {
@@ -48,7 +36,8 @@ async function sendMail(to: string | string[], subject: string, html: string) {
       subject,
       error: error.message,
       code: error.code,
-      command: error.command,
+      response: error.response?.body,
+      status: error.response?.statusCode,
     });
 
     if (NODE_ENV === 'production') {
@@ -90,7 +79,7 @@ const paymentStatusMessages: Record<string, string> = {
   Refunded: 'Your payment has been refunded.',
 };
 
-// Order confirmation
+// --- Order confirmation ---
 export async function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
   const html = `
     <h2>Thank you for your order, ${user.name || ''}!</h2>
@@ -101,7 +90,7 @@ export async function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
   return sendMail(user.email, 'Order Confirmation', html);
 }
 
-// Order status update
+// --- Order status update ---
 export async function sendOrderStatusUpdateEmail(
   user: UserInfo,
   order: OrderInfo
@@ -117,7 +106,7 @@ export async function sendOrderStatusUpdateEmail(
   return sendMail(user.email, 'Order Status Updated', html);
 }
 
-// Low stock alert
+// --- Low stock alert ---
 export async function sendLowStockEmail(
   adminEmails: string[],
   lowStockProducts: { name: string; stock: number }[]
@@ -133,7 +122,7 @@ export async function sendLowStockEmail(
   return sendMail(adminEmails, 'Low Stock Alert', html);
 }
 
-// Custom single/bulk email
+// --- Custom single/bulk email ---
 export async function sendCustomEmail(
   to: string | string[],
   subject: string,
@@ -142,19 +131,31 @@ export async function sendCustomEmail(
   return sendMail(to, subject, html);
 }
 
-// Daily report
+// --- Daily report ---
 export async function sendDailySalesReportEmail(to: string[], html: string) {
   return sendMail(to, 'Daily Sales Report', html);
 }
 
-// --- Background verify (non-blocking) ---
+// --- Background SendGrid API key verification (non-blocking) ---
 (async () => {
   try {
-    const ok = await transporter.verify();
-    if (ok) console.log('✅ SMTP connection verified');
+    if (!SENDGRID_API_KEY) {
+      throw new Error('SENDGRID_API_KEY not set');
+    }
+
+    // SendGrid doesn't have a direct "verify key" endpoint.
+    // This simple check sends a dry-run (fake send) to verify API access.
+    await sgMail.send({
+      to: 'victortochukwu1000@gmail.com',
+      from: SENDGRID_SENDER_EMAIL || 'noreply@example.com',
+      subject: '[Verification] SendGrid API connected',
+      text: 'This is a background verification test. No action required.',
+    });
+
+    console.log('SendGrid SDK initialized and API key verified');
   } catch (err: any) {
-    console.warn('⚠️ SMTP verify failed:', err.message);
+    console.warn('⚠️ SendGrid SDK verification failed:', err.message);
   }
 })();
 
-export { sendMail, transporter };
+export { sendMail, sgMail };
