@@ -32,8 +32,7 @@ const handleJWTError = () => {
 };
 // Global Error Handler Middleware
 const errorHandler = (err, req, res, next) => {
-    let error = { ...err };
-    error.message = err.message;
+    let error = err;
     // Log error for debugging
     if (NODE_ENV === 'development') {
         console.error('Error 🔥:', err);
@@ -42,16 +41,16 @@ const errorHandler = (err, req, res, next) => {
     if (err instanceof mongoose.Error.CastError) {
         error = new AppError(SAFE_ERROR_MESSAGES.VALIDATION_FAILED, 400, 'VALIDATION_ERROR');
     }
-    if (err instanceof mongoose.Error.ValidationError) {
+    else if (err instanceof mongoose.Error.ValidationError) {
         error = handleValidationError(err);
     }
-    if (err.code === 11000) {
+    else if (err.code === 11000) {
         error = handleDuplicateKeyError(err);
     }
-    if (err instanceof Joi.ValidationError) {
+    else if (err instanceof Joi.ValidationError) {
         error = handleJoiValidationError(err);
     }
-    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+    else if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
         error = handleJWTError();
     }
     // Send error response
