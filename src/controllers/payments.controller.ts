@@ -100,17 +100,27 @@ export async function verifyPaystackPayment(req: Request, res: Response) {
  */
 export async function paystackWebhook(req: Request, res: Response) {
   try {
+    console.log(`[Webhook] Received webhook call`);
+    
     const headerSig = req.header("x-paystack-signature");
-    if (!headerSig || headerSig.length === 0) return res.sendStatus(401);
+    if (!headerSig || headerSig.length === 0) {
+      console.log(`[Webhook] Missing signature header`);
+      return res.sendStatus(401);
+    }
 
     const raw = req.body as Buffer;
     const computed = crypto.createHmac("sha512", PAYSTACK_SECRET).update(raw).digest("hex");
     const valid =
       headerSig.length === computed.length &&
       crypto.timingSafeEqual(Buffer.from(headerSig), Buffer.from(computed));
-    if (!valid) return res.sendStatus(401);
+    
+    if (!valid) {
+      console.log(`[Webhook] Invalid signature`);
+      return res.sendStatus(401);
+    }
 
     const event = JSON.parse(raw.toString("utf8"));
+    console.log(`[Webhook] Event received:`, event.event, `Reference:`, event.data?.reference);
 
     // normalize eventType
     const eventType =
@@ -125,6 +135,8 @@ export async function paystackWebhook(req: Request, res: Response) {
     const data = event.data || {};
     const reference: string = data.reference;
     const amountMajor = typeof data.amount === "number" ? data.amount / 100 : undefined;
+
+    console.log(`[Webhook] Processing ${eventType} for reference: ${reference}, amount: ${amountMajor}`);
 
     await enqueuePaymentEvent({
       provider: "paystack",
@@ -141,7 +153,7 @@ export async function paystackWebhook(req: Request, res: Response) {
       raw: event,
     });
 
-    console.log(`[Webhook] Processed ${eventType} for reference: ${reference}`);
+    console.log(`[Webhook] Successfully enqueued ${eventType} for reference: ${reference}`);
     return res.sendStatus(200);
   } catch (err) {
     console.error("Paystack webhook error:", err);

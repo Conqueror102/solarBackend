@@ -24,7 +24,7 @@ import cartRoutes from "./routes/cartRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
-import webhookHandler from "./routes/payments.routes.js";
+import { paystackWebhook } from "./controllers/payments.controller.js";
 import { swaggerUi, swaggerDocs } from "./utils/swagger.js";
 import { fileURLToPath } from "url";
 import { startDailySalesReportCron } from "./cron/dailySalesReport.js";
@@ -151,7 +151,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/paystack", paymentsRouter);
 
 // Webhook AFTER json parser, with raw body:
-app.post("/api/paystack/webhook", rawBodyParser, webhookHandler);
+app.post("/api/paystack/webhook", rawBodyParser, paystackWebhook);
 
 // Serve static files (e.g., product images)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
