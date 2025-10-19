@@ -151,8 +151,10 @@ export const { worker: paymentWorker } = makeWorker('payment', async (job) => {
     // WEBHOOK/EVENT path
     const d = job.data;
     const idKey = `${d.provider}:payment:${d.reference}`;
+    console.log(`[PaymentWorker] Processing webhook event: ${d.eventType} for reference: ${d.reference}`);
     // 1. Check durable marker first (fast path)
     if (await wasAlreadyProcessed(idKey)) {
+        console.log(`[PaymentWorker] Skipping already processed payment: ${d.reference}`);
         return { skipped: 'already_processed' };
     }
     // 2. Try to acquire processing lock
@@ -174,13 +176,17 @@ export const { worker: paymentWorker } = makeWorker('payment', async (job) => {
         const trxDoc = await upsertTransaction(trxData);
         // Update order if present
         const order = await Order.findOne({ paystackReference: d.reference });
+        console.log(`[PaymentWorker] Order lookup for reference ${d.reference}:`, order ? `Found order ${order._id}` : 'Order not found');
         if (order) {
             // Normalize status: Paystack uses 'success', our DB uses 'successful'
             const normalizedStatus = trxData.status === 'success' ? 'successful' : trxData.status;
+            console.log(`[PaymentWorker] Processing payment status: ${normalizedStatus} for order ${order._id}`);
             if (normalizedStatus === 'successful') {
+                console.log(`[PaymentWorker] Marking order ${order._id} as successful`);
                 await handleSuccess(order);
             }
             else if (normalizedStatus === 'failed') {
+                console.log(`[PaymentWorker] Marking order ${order._id} as failed`);
                 await handleFailed(order, 'failed');
             }
             else if (normalizedStatus === 'refunded') {

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { registerUser, loginUser, getUserProfile, logoutUser, getCurrentUser, updateUserProfile, forgotPassword, resetPassword, changePassword, verifyEmail } from '../controllers/authController.js';
+import { registerUser, loginUser, getUserProfile, logoutUser, getCurrentUser, updateUserProfile, forgotPassword, resetPassword, changePassword, verifyEmail, resendVerificationEmail } from '../controllers/authController.js';
 import { protect } from '../middlewares/authMiddleware.js';
 const router = Router();
 const authLimiter = rateLimit({
@@ -12,6 +12,7 @@ router.post('/register', authLimiter, registerUser);
 router.post('/login', authLimiter, loginUser);
 router.post('/forgot-password', authLimiter, forgotPassword);
 router.post('/verify-email', verifyEmail);
+router.post('/resend-verification', authLimiter, resendVerificationEmail);
 router.get('/profile', protect, getUserProfile);
 router.post('/logout', protect, logoutUser);
 router.get('/me', protect, getCurrentUser);

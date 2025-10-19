@@ -106,8 +106,40 @@ export const getOrders = asyncHandler(async (req, res) => {
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const totalOrders = await Order.countDocuments({});
-    const orders = await Order.find({})
+    // Build filter object based on query parameters
+    const filter = {};
+    // Status filter
+    if (req.query.status && req.query.status !== 'all') {
+        filter.status = req.query.status;
+    }
+    // Payment status filter
+    if (req.query.paymentStatus && req.query.paymentStatus !== 'all') {
+        filter.paymentStatus = req.query.paymentStatus;
+    }
+    // Date range filter
+    if (req.query.startDate || req.query.endDate) {
+        filter.createdAt = {};
+        if (req.query.startDate) {
+            filter.createdAt.$gte = new Date(req.query.startDate);
+        }
+        if (req.query.endDate) {
+            // Set to end of day for endDate
+            const endDate = new Date(req.query.endDate);
+            endDate.setHours(23, 59, 59, 999);
+            filter.createdAt.$lte = endDate;
+        }
+    }
+    // Search by order ID or customer name/email
+    if (req.query.search) {
+        const searchTerm = req.query.search;
+        // If search looks like an order ID (starts with #), search by ID
+        if (searchTerm.startsWith('#')) {
+            const idPart = searchTerm.substring(1);
+            filter._id = { $regex: idPart, $options: 'i' };
+        }
+    }
+    const totalOrders = await Order.countDocuments(filter);
+    const orders = await Order.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
