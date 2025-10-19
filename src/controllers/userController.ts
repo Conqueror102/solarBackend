@@ -586,6 +586,7 @@ const getAllCustomers = asyncHandler(async (req: Request, res: Response) => {
         lastOrderDate: lastOrder?.createdAt || null,
         status: customer.isDeactivated ? 'Deactivated' : 'Active',
         isDeactivated: customer.isDeactivated,
+        emailVerified: customer.emailVerified
       };
     })
   );
