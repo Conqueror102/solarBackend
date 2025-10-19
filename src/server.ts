@@ -35,6 +35,8 @@ import transactionRoutes from "./routes/transactionRoutes.js";
 import brandRoutes from "./routes/brandRoutes.js";
 import { checkRedisConnectivity } from "./infra/redisHealth.js";
 import { bullBoardRouter } from "./infra/bullBoard.js";
+import { ensureRedisConnected } from "./config/redis.js";
+import "./workers/index.js"; // Start workers immediately
 
 // Load environment variables
 dotenv.config();
@@ -70,8 +72,9 @@ const app: Application = express();
 
 app.set("trust proxy", 1);
 
-// Connect to MongoDB
+// Connect to MongoDB and Redis
 connectDB();
+ensureRedisConnected();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
