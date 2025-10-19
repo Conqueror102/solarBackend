@@ -6,6 +6,7 @@ The main issue was that **Redis connection was never initialized**, preventing B
 ## Changes Made
 1. Added `ensureRedisConnected()` call in `server.ts` to initialize Redis on startup
 2. Added `import "./workers/index.js"` to ensure workers start immediately when server starts
+3. **CRITICAL**: Moved webhook route BEFORE `express.json()` middleware to preserve raw body for signature verification
 
 ## How to Verify the Fix
 
@@ -76,6 +77,12 @@ Visit: `http://localhost:5000/admin/queues`
 **Solution**: 
 - Check `PAYSTACK_SECRET` environment variable matches your Paystack secret key
 - Ensure you're using the correct key (test vs live)
+
+### Issue: "ERR_INVALID_ARG_TYPE: The 'data' argument must be of type string or an instance of Buffer"
+**Cause**: Webhook route is registered after `express.json()` middleware, so body is already parsed
+**Solution**: 
+- Webhook route MUST be registered BEFORE `express.json()` middleware
+- This is already fixed in the updated server.ts
 
 ### Issue: Jobs not processing
 **Cause**: Redis not connected or workers not started

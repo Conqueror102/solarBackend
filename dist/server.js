@@ -73,6 +73,8 @@ const logDirectory = path.join(__dirname, "logs");
 if (!fs.existsSync(logDirectory)) {
     fs.mkdirSync(logDirectory);
 }
+// IMPORTANT: Webhook route MUST come BEFORE express.json() to get raw body
+app.post("/api/paystack/webhook", rawBodyParser, paystackWebhook);
 // Middleware: parse JSON and form data
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -128,8 +130,6 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/paystack", paymentsRouter);
-// Webhook AFTER json parser, with raw body:
-app.post("/api/paystack/webhook", rawBodyParser, paystackWebhook);
 // Serve static files (e.g., product images)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.get("/health/redis", async (_req, res) => {
