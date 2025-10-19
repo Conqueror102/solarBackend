@@ -1,7 +1,7 @@
 import Joi from 'joi';
 
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{10,}$/;
-const passwordMessage = 'Password must be at least 10 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&)';
+const passwordMessage = 'Please create a strong password with at least 10 characters, including uppercase and lowercase letters, numbers, and special characters like @, $, !, %, *, ?, or &';
 
 export const registerSchema = Joi.object({
   name: Joi.string().min(2).max(50).required(),

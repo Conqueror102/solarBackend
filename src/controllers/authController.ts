@@ -48,7 +48,8 @@ const registerUser = asyncHandler(async (req: Request, res: Response) => {
     // Password strength checks (kept as in your latest version)
     const passwordValidation = PasswordValidationService.validatePassword(password);
     if (!passwordValidation.isValid) {
-        throw new ValidationError('Password does not meet security requirements');
+        const formattedError = PasswordValidationService.formatPasswordErrors([...passwordValidation.errors]);
+        throw new ValidationError(formattedError);
     }
 
     if (role && role !== 'user') {
@@ -250,8 +251,9 @@ const changePassword = asyncHandler(async (req: Request, res: Response) => {
     // Password strength checks (kept as in your latest version)
     const passwordValidation = PasswordValidationService.validatePassword(newPassword);
     if (!passwordValidation.isValid) {
+        const formattedError = PasswordValidationService.formatPasswordErrors([...passwordValidation.errors]);
         res.status(400);
-        throw new Error(`New password is too weak: ${passwordValidation.errors.join(', ')}`);
+        throw new Error(formattedError);
     }
 
     // Check if new password is same as current
@@ -295,6 +297,52 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
     user.emailVerificationToken = undefined;
     await user.save();
     res.json({ message: 'Email verified successfully. You can now log in.' });
+});
+
+const resendVerificationEmail = asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body;
+    
+    if (!email) {
+        throw new ValidationError('Email is required');
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+        // Return success message even if user doesn't exist for security
+        res.status(200).json({ message: 'If that email is registered and not verified, a verification email has been sent.' });
+        return;
+    }
+
+    if (user.emailVerified) {
+        res.status(400).json({ message: 'Email is already verified' });
+        return;
+    }
+
+    // Generate new email verification token
+    const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+    user.emailVerificationToken = emailVerificationToken;
+    await user.save();
+
+    // SERVER-SIDE THROTTLE: verification email (key by email)
+    const throttleKey = `auth:verify:${email.toLowerCase()}`;
+    const { allowed } = await throttleOnce(throttleKey, VERIFY_EMAIL_THROTTLE_SEC);
+
+    if (allowed) {
+        // Enqueue verification email (idempotent per user+token)
+        await enqueueEmailVerification({
+            to: email,
+            userName: user.name,
+            token: emailVerificationToken,
+            frontendUrl: FRONTEND_URL,
+            userId: String(user._id),
+        });
+    } else {
+        if (NODE_ENV !== 'production') {
+            console.log(`Verification email throttled for ${email}`);
+        }
+    }
+
+    res.status(200).json({ message: 'If that email is registered and not verified, a verification email has been sent.' });
 });
 
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
@@ -353,6 +401,7 @@ export {
     forgotPassword, 
     resetPassword, 
     changePassword, 
-    verifyEmail
+    verifyEmail,
+    resendVerificationEmail
     // TEMPORARILY DISABLED: refreshtoken 
 };
