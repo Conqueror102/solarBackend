@@ -103,7 +103,7 @@ const allowedOrigins = [
   "http://localhost:3001", // local dev
   "https://onye-solar.vercel.app", 
 
-  "https://victor-wheat.vercel.app/"
+  "https://victor-wheat.vercel.app"
 ];
 
 app.use(
