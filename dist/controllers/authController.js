@@ -32,9 +32,11 @@ const NODE_ENV = process.env.NODE_ENV;
 const VERIFY_EMAIL_THROTTLE_SEC = 10 * 60; // 10 minutes
 const RESET_EMAIL_THROTTLE_SEC = 10 * 60; // 10 minutes
 const registerUser = asyncHandler(async (req, res) => {
-    const { error } = registerSchema.validate(req.body);
+    const { error } = registerSchema.validate(req.body, { abortEarly: false });
     if (error) {
-        throw new ValidationError(SAFE_ERROR_MESSAGES.VALIDATION_FAILED);
+        // Extract detailed validation errors
+        const details = error.details.map(detail => detail.message).join('; ');
+        throw new ValidationError(details);
     }
     const { name, email, password, role } = req.body;
     // Password strength checks (kept as in your latest version)
@@ -88,9 +90,11 @@ const registerUser = asyncHandler(async (req, res) => {
 });
 const loginUser = asyncHandler(async (req, res) => {
     // Validate request body
-    const { error } = loginSchema.validate(req.body);
+    const { error } = loginSchema.validate(req.body, { abortEarly: false });
     if (error) {
-        throw new ValidationError(SAFE_ERROR_MESSAGES.VALIDATION_FAILED);
+        // Extract detailed validation errors
+        const details = error.details.map(detail => detail.message).join('; ');
+        throw new ValidationError(details);
     }
     const { email, password } = req.body;
     const user = await User.findOne({ email });

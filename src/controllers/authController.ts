@@ -14,7 +14,7 @@ import { User } from '../models/User.js';
 import crypto from 'crypto';
 // import { sendCustomEmail } from '../utils/email.js'; // moved to queue workers
 import { registerSchema, loginSchema } from '../validators/auth.js';
-import { 
+import {
     generatetoken
     // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
     // generateRefreshToken, 
@@ -22,7 +22,7 @@ import {
     // rotateRefreshToken, 
     // revokeRefreshToken
 } from '../utils/tokenService.js';
-import {  AuthenticationError, DuplicateError, SAFE_ERROR_MESSAGES, ValidationError } from '../utils/errorUtils.js';
+import { AuthenticationError, DuplicateError, SAFE_ERROR_MESSAGES, ValidationError } from '../utils/errorUtils.js';
 import { PasswordValidationService } from '../utils/passwordValidation.js';
 
 // NEW: throttle + email producers for queued emails
@@ -35,16 +35,18 @@ const NODE_ENV = process.env.NODE_ENV;
 
 // Throttle windows (seconds)
 const VERIFY_EMAIL_THROTTLE_SEC = 10 * 60; // 10 minutes
-const RESET_EMAIL_THROTTLE_SEC  = 10 * 60; // 10 minutes
+const RESET_EMAIL_THROTTLE_SEC = 10 * 60; // 10 minutes
 
 const registerUser = asyncHandler(async (req: Request, res: Response) => {
-    const { error } = registerSchema.validate(req.body);
+    const { error } = registerSchema.validate(req.body, { abortEarly: false });
     if (error) {
-        throw new ValidationError(SAFE_ERROR_MESSAGES.VALIDATION_FAILED);
+        // Extract detailed validation errors
+        const details = error.details.map(detail => detail.message).join('; ');
+        throw new ValidationError(details);
     }
 
     const { name, email, password, role } = req.body;
-    
+
     // Password strength checks (kept as in your latest version)
     const passwordValidation = PasswordValidationService.validatePassword(password);
     if (!passwordValidation.isValid) {
@@ -63,13 +65,13 @@ const registerUser = asyncHandler(async (req: Request, res: Response) => {
 
     // Generate email verification token
     const emailVerificationToken = crypto.randomBytes(32).toString('hex');
-    const user = await User.create({ 
-        name, 
-        email, 
-        password, 
-        role: 'user', 
-        emailVerificationToken, 
-        emailVerified: false 
+    const user = await User.create({
+        name,
+        email,
+        password,
+        role: 'user',
+        emailVerificationToken,
+        emailVerified: false
     });
 
     // SERVER-SIDE THROTTLE: verification email (key by email)
@@ -99,13 +101,15 @@ const registerUser = asyncHandler(async (req: Request, res: Response) => {
         message: 'Registration successful. Please check your email to verify your account.'
     });
 });
-  
+
 
 const loginUser = asyncHandler(async (req: Request, res: Response) => {
     // Validate request body
-    const { error } = loginSchema.validate(req.body);
+    const { error } = loginSchema.validate(req.body, { abortEarly: false });
     if (error) {
-        throw new ValidationError(SAFE_ERROR_MESSAGES.VALIDATION_FAILED);
+        // Extract detailed validation errors
+        const details = error.details.map(detail => detail.message).join('; ');
+        throw new ValidationError(details);
     }
 
     const { email, password } = req.body;
@@ -301,7 +305,7 @@ const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
 
 const resendVerificationEmail = asyncHandler(async (req: Request, res: Response) => {
     const { email } = req.body;
-    
+
     if (!email) {
         throw new ValidationError('Email is required');
     }
@@ -348,7 +352,7 @@ const resendVerificationEmail = asyncHandler(async (req: Request, res: Response)
 // TEMPORARILY DISABLED: Enhanced token security for frontend compatibility
 // const refreshtoken = asyncHandler(async (req: Request, res: Response) => {
 //     const refreshToken = req.cookies.refreshToken;
-    
+
 //     if (!refreshToken) {
 //         res.status(401);
 //         throw new Error('Refresh token not found');
@@ -379,7 +383,7 @@ const resendVerificationEmail = asyncHandler(async (req: Request, res: Response)
 // Update logout to handle refresh tokens
 const logoutUser = asyncHandler(async (_req: Request, res: Response) => {
     // const refreshToken = req.cookies.refreshToken;
-    
+
     // if (refreshToken) {
     //     const userId = await verifyRefreshToken(refreshToken);
     //     if (userId) {
@@ -391,16 +395,16 @@ const logoutUser = asyncHandler(async (_req: Request, res: Response) => {
     res.json({ message: 'Logged out successfully' });
 });
 
-export { 
-    registerUser, 
-    loginUser, 
-    getUserProfile, 
-    logoutUser, 
-    getCurrentUser, 
-    updateUserProfile, 
-    forgotPassword, 
-    resetPassword, 
-    changePassword, 
+export {
+    registerUser,
+    loginUser,
+    getUserProfile,
+    logoutUser,
+    getCurrentUser,
+    updateUserProfile,
+    forgotPassword,
+    resetPassword,
+    changePassword,
     verifyEmail,
     resendVerificationEmail
     // TEMPORARILY DISABLED: refreshtoken 
