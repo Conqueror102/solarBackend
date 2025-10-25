@@ -51,9 +51,9 @@ export async function initPaystackPayment(req: Request, res: Response) {
     const user = await User.findById(order.user);
     if (!user?.email) return res.status(400).json({ error: "Customer email required" });
 
-    // Move to Processing (payment) if still Pending
-    if (!order.paymentStatus || order.paymentStatus === "Pending") {
-      order.paymentStatus = "Processing";
+    // Move to ongoing (payment) if still pending
+    if (!order.paymentStatus || order.paymentStatus === "pending") {
+      order.paymentStatus = "ongoing";
       await order.save();
     }
 

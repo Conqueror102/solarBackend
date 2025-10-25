@@ -62,13 +62,17 @@ const orderSchema = new Schema<IOrder>({
   paymentStatus: {
     type: String,
     required: true,
-    default: 'Pending',
+    default: 'pending',
     enum: [
-      'Pending',      // Initial payment state
-      'Processing',   // Payment is being processed
-      'Completed',    // Payment successful
-      'Failed',       // Payment failed
-      'Refunded'      // Payment was refunded
+      'pending',      // Initial/awaiting payment
+      'ongoing',      // Payment in progress
+      'queued',       // Payment queued
+      'success',      // Payment successful
+      'failed',       // Payment failed
+      'declined',     // Payment declined by bank
+      'abandoned',    // Payment abandoned by customer
+      'reversed',     // Payment reversed
+      'refunded'      // Payment refunded
     ]
   },
   status: { 
