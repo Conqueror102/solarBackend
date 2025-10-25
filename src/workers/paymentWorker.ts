@@ -191,8 +191,8 @@ async function upsertTransaction(trxData: any, orderId?: string) {
     reference: trxData.reference,
     customer: {
       id: trxData.customer?.id,
-      first_name: trxData.customer?.first_name,
-      last_name: trxData.customer?.last_name,
+      first_name: trxData.customer?.name,
+      // last_name: trxData.customer?.last_name,
       email: trxData.customer?.email,
     },
     paidAt: trxData.paid_at,
