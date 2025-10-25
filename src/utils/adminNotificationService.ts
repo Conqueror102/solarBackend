@@ -138,7 +138,7 @@ export const notifyNewOrderPlaced = async (
   return await createAdminNotification(
     'new_order_placed',
     'New Order Placed',
-    `New order #${orderId.slice(-5)} placed by ${customerName} for $${orderAmount.toFixed(2)}`,
+    `New order #${orderId.slice(-5)} placed by ${customerName} for ₦${orderAmount.toFixed(2)}`,
     {
       orderId,
       orderAmount,
@@ -186,7 +186,7 @@ export const notifyPaymentReceived = async (
   return await createAdminNotification(
     'payment_received',
     'Payment Received',
-    `Payment of $${amount.toFixed(2)} received for order #${orderId.slice(-5)} via ${paymentMethod}`,
+    `Payment of ₦${amount.toFixed(2)} received for order #${orderId.slice(-5)} via ${paymentMethod}`,
     {
       orderId,
       orderAmount: amount,
@@ -210,7 +210,7 @@ export const notifyPaymentFailed = async (
   return await createAdminNotification(
     'payment_failed',
     'Payment Failed',
-    `Payment of $${amount.toFixed(2)} failed for order #${orderId.slice(-5)} via ${paymentMethod}. Reason: ${reason}`,
+    `Payment of ₦${amount.toFixed(2)} failed for order #${orderId.slice(-5)} via ${paymentMethod}. Reason: ${reason}`,
     {
       orderId,
       orderAmount: amount,
@@ -383,7 +383,7 @@ export const notifyRevenueMilestone = async (
   return await createAdminNotification(
     'revenue_milestone',
     `Revenue Milestone: ${milestone}`,
-    `Congratulations! You've reached ${milestone} with $${amount.toFixed(2)} in ${period}`,
+    `Congratulations! You've reached ${milestone} with ₦${amount.toFixed(2)} in ${period}`,
     {
       milestone,
       revenue: amount,

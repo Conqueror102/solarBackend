@@ -28,7 +28,6 @@ async function sendMail(to: string | string[], subject: string, html: string) {
     };
 
     const result = await sgMail.send(msg);
-    console.log(`✅ Email sent via SendGrid: ${subject}`);
     return result;
   } catch (error: any) {
     console.error('❌ Email failed:', {
@@ -84,7 +83,7 @@ export async function sendOrderPlacedEmail(user: UserInfo, order: OrderInfo) {
   const html = `
     <h2>Thank you for your order, ${user.name || ''}!</h2>
     <p>Your order <b>#${order._id.slice(-5)}</b> has been placed successfully.</p>
-    <p>Total Amount: <b>$${order.totalAmount.toFixed(2)}</b></p>
+    <p>Total Amount: <b>₦${order.totalAmount.toFixed(2)}</b></p>
     <p>Status: <b>${order.status}</b></p>
   `;
   return sendMail(user.email, 'Order Confirmation', html);
@@ -142,17 +141,7 @@ export async function sendDailySalesReportEmail(to: string[], html: string) {
     if (!SENDGRID_API_KEY) {
       throw new Error('SENDGRID_API_KEY not set');
     }
-
-    // SendGrid doesn't have a direct "verify key" endpoint.
-    // This simple check sends a dry-run (fake send) to verify API access.
-    await sgMail.send({
-      to: 'victortochukwu1000@gmail.com',
-      from: SENDGRID_SENDER_EMAIL || 'noreply@example.com',
-      subject: '[Verification] SendGrid API connected',
-      text: 'This is a background verification test. No action required.',
-    });
-
-    console.log('SendGrid SDK initialized and API key verified');
+    // SendGrid SDK initialized - no test email sent
   } catch (err: any) {
     console.warn('⚠️ SendGrid SDK verification failed:', err.message);
   }
