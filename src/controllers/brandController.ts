@@ -96,14 +96,25 @@ const createBrand = asyncHandler(async (req: Request, res: Response) => {
     logoUrl = result.secure_url;
   }
 
-  const brand = await Brand.create({
-    name,
-    description,
-    logo: logoUrl,
-    website,
-    country,
-    isActive,
-  });
+  let brand;
+  try {
+    brand = await Brand.create({
+      name,
+      description,
+      logo: logoUrl,
+      website,
+      country,
+      isActive,
+    });
+  } catch (err: any) {
+    // Handle Mongoose validation errors
+    if (err.name === 'ValidationError') {
+      res.status(400);
+      const messages = Object.values(err.errors).map((e: any) => e.message).join(', ');
+      throw new Error(messages);
+    }
+    throw err;
+  }
 
   // enqueue admin notify
   const actor = (req as any)?.user?.name || 'System';
@@ -147,7 +158,7 @@ const updateBrand = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // optional new logo
-  if ( (req as any).file ) {
+  if ((req as any).file) {
     const logoFile = (req as any).file;
     const validation = validateImageFile(logoFile);
     if (!validation.isValid) {
@@ -168,10 +179,21 @@ const updateBrand = asyncHandler(async (req: Request, res: Response) => {
     logo: brand.logo,
   };
 
-  const updatedBrand = await Brand.findByIdAndUpdate(req.params.id, brandData, {
-    new: true,
-    runValidators: true,
-  });
+  let updatedBrand;
+  try {
+    updatedBrand = await Brand.findByIdAndUpdate(req.params.id, brandData, {
+      new: true,
+      runValidators: true,
+    });
+  } catch (err: any) {
+    // Handle Mongoose validation errors
+    if (err.name === 'ValidationError') {
+      res.status(400);
+      const messages = Object.values(err.errors).map((e: any) => e.message).join(', ');
+      throw new Error(messages);
+    }
+    throw err;
+  }
 
   // enqueue admin notify
   const actor = (req as any)?.user?.name || 'System';
@@ -282,7 +304,7 @@ const bulkUpdateBrands = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const getActiveBrands = asyncHandler(async (_req: Request, res: Response) => {
-  const brands = await Brand.find({ isActive: true }).select('name logo').sort({ name: 1 });
+  const brands = await Brand.find({ isActive: true }).sort({ name: 1 });
   res.json(brands);
 });
 

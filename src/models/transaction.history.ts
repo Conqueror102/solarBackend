@@ -31,6 +31,7 @@ export interface ITransaction extends Document {
   reference: string;
   paidAt?: Date;
   customer: ICustomer;
+  order?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 
@@ -86,6 +87,7 @@ const transactionSchema = new Schema<ITransaction>(
       last_name: { type: String },
       email: { type: String, required: true },
     },
+    order: { type: Schema.Types.ObjectId, ref: 'Order' },
   },
   { timestamps: true }
 );

@@ -57,13 +57,44 @@ function toNGN(amountKobo?: number) {
   return typeof amountKobo === 'number' ? Math.round(amountKobo) / 100 : undefined;
 }
 
+// Get human-readable reason for failed payments
+function getFailureReason(paystackStatus: string): string {
+  switch (paystackStatus) {
+    case 'declined':
+      return 'Payment declined by bank';
+    case 'abandoned':
+      return 'Payment abandoned by customer';
+    case 'failed':
+      return 'Payment failed';
+    case 'reversed':
+      return 'Payment reversed';
+    default:
+      return `Payment status: ${paystackStatus}`;
+  }
+}
+
+// Check if payment is successful
+function isSuccessStatus(status: string): boolean {
+  return status === 'success';
+}
+
+// Check if payment is failed/declined
+function isFailedStatus(status: string): boolean {
+  return ['failed', 'declined', 'abandoned'].includes(status);
+}
+
+// Check if payment is refunded/reversed
+function isRefundedStatus(status: string): boolean {
+  return ['refunded', 'reversed'].includes(status);
+}
+
 async function handleSuccess(order: any) {
   const firstTime = !order.isPaid;
   if (firstTime) {
     order.isPaid = true;
     order.paidAt = new Date();
   }
-  order.paymentStatus = 'Completed';
+  order.paymentStatus = 'success';
   if (order.status === 'New') order.status = 'Processing';
   await order.save();
 
@@ -81,7 +112,7 @@ async function handleSuccess(order: any) {
         }
       );
     }
-    
+
     await createPaymentSuccessNotification(
       order.user.toString(),
       order._id.toString(),
@@ -98,9 +129,9 @@ async function handleSuccess(order: any) {
   }
 }
 
-async function handleFailed(order: any, reason: string) {
+async function handleFailed(order: any, paystackStatus: string) {
   if (!order.isPaid) {
-    order.paymentStatus = 'Failed';
+    order.paymentStatus = paystackStatus; // Use actual Paystack status
     await order.save();
 
     const user = await User.findById(order.user);
@@ -120,43 +151,55 @@ async function handleFailed(order: any, reason: string) {
       order._id.toString(),
       order.totalAmount,
       order.paymentMethod || 'paystack',
-      reason,
+      getFailureReason(paystackStatus),
       order.currency || 'NGN'
     );
     await notifyPaymentFailed(
       order._id.toString(),
       order.totalAmount,
       order.paymentMethod || 'paystack',
-      reason,
+      getFailureReason(paystackStatus),
       (user as any)?.name || 'Unknown Customer'
     );
   }
 }
 
-async function upsertTransaction(trxData: any) {
+async function upsertTransaction(trxData: any, orderId?: string) {
   // Normalize status: Paystack uses 'success', our DB uses 'successful'
   const normalizedStatus = trxData.status === 'success' ? 'successful' : trxData.status;
-  
-  return Transaction.findOneAndUpdate(
-    { transactionId: trxData.id },
-    {
-      $setOnInsert: {
-        transactionId: trxData.id,
-        amount: toNGN(trxData.amount),
-        currency: trxData.currency,
-        reference: trxData.reference,
-        customer: {
-          id: trxData.customer?.id,
-          first_name: trxData.customer?.first_name,
-          last_name: trxData.customer?.last_name,
-          email: trxData.customer?.email,
-        },
-        paidAt: trxData.paid_at,
-        status: normalizedStatus,
-      },
+
+  const existingTrx = await Transaction.findOne({ transactionId: trxData.id });
+
+  if (existingTrx) {
+    // Update existing transaction status if changed
+    if (existingTrx.status !== normalizedStatus) {
+      await existingTrx.updateStatus(normalizedStatus);
+    }
+    // Add order reference if not already set
+    if (orderId && !existingTrx.order) {
+      existingTrx.order = orderId as any;
+      await existingTrx.save();
+    }
+    return existingTrx;
+  }
+
+  // Create new transaction with all data
+  return Transaction.create({
+    transactionId: trxData.id,
+    amount: toNGN(trxData.amount),
+    currency: trxData.currency,
+    reference: trxData.reference,
+    customer: {
+      id: trxData.customer?.id,
+      first_name: trxData.customer?.first_name,
+      last_name: trxData.customer?.last_name,
+      email: trxData.customer?.email,
     },
-    { upsert: true, new: true }
-  );
+    paidAt: trxData.paid_at,
+    status: normalizedStatus,
+    statusHistory: [{ status: normalizedStatus, changedAt: new Date() }],
+    order: orderId,
+  });
 }
 
 // ---------- Worker ----------
@@ -167,52 +210,61 @@ export const { worker: paymentWorker } = makeWorker(
       // VERIFY path (from GET /verify)
       const d = job.data as PaymentVerifyJob;
       const idKey = `${d.provider}:payment:${d.reference}`;
-      
+
       // 1. Check durable marker first (fast path)
       if (await wasAlreadyProcessed(idKey)) {
         return { skipped: 'already_processed' };
       }
-      
+
       // 2. Try to acquire processing lock
       if (!(await acquireProcessingLock(idKey))) {
         // Another worker is processing this right now
         throw new Error('Lock acquisition failed - another worker processing');
       }
-      
+
       try {
         // 3. Double-check after acquiring lock (another worker might have finished)
         if (await wasAlreadyProcessed(idKey)) {
           await releaseProcessingLock(idKey);
           return { skipped: 'already_processed' };
         }
-        
+
         // 4. Do the actual work
         const verifyResp: any = await paystack.verify(d.reference);
         const trx = verifyResp.data;
 
         const order = await Order.findOne({ paystackReference: d.reference });
         if (!order) {
+          // Save transaction even if order not found
+          await upsertTransaction(trx);
           await releaseProcessingLock(idKey);
           return { ignored: 'order_not_found' };
         }
 
+        // Save transaction with order reference (saves ALL transactions regardless of status)
+        await upsertTransaction(trx, order._id.toString());
+
         const expectedKobo = Math.round((order.amountAtPayment ?? order.totalAmount) * 100);
         const currency = order.currency || 'NGN';
+        const paystackStatus = trx.status;
 
-        if (trx.status === 'success' && trx.amount === expectedKobo && trx.currency === currency) {
+        if (isSuccessStatus(paystackStatus) && trx.amount === expectedKobo && trx.currency === currency) {
           await handleSuccess(order);
-        } else if ((trx.status === 'failed' || trx.status === 'abandoned') && !order.isPaid) {
-          await handleFailed(order, trx.status === 'failed' ? 'Verification failed' : 'Payment abandoned');
+        } else if (isFailedStatus(paystackStatus) && !order.isPaid) {
+          await handleFailed(order, paystackStatus);
+        } else if (isRefundedStatus(paystackStatus)) {
+          order.paymentStatus = paystackStatus;
+          await order.save();
         }
-        
+
         // 5. Mark as processed (durable marker)
         await markAsProcessed(idKey);
-        
+
         // 6. Release lock
         await releaseProcessingLock(idKey);
 
         return { verified: true, status: order.paymentStatus };
-        
+
       } catch (error) {
         // On failure, release lock so retries can happen
         await releaseProcessingLock(idKey);
@@ -223,53 +275,52 @@ export const { worker: paymentWorker } = makeWorker(
     // WEBHOOK/EVENT path
     const d = job.data as PaymentEventJob;
     const idKey = `${d.provider}:payment:${d.reference}`;
-    
+
     console.log(`[PaymentWorker] Processing webhook event: ${d.eventType} for reference: ${d.reference}`);
-    
+
     // 1. Check durable marker first (fast path)
     if (await wasAlreadyProcessed(idKey)) {
       console.log(`[PaymentWorker] Skipping already processed payment: ${d.reference}`);
       return { skipped: 'already_processed' };
     }
-    
+
     // 2. Try to acquire processing lock
     if (!(await acquireProcessingLock(idKey))) {
       // Another worker is processing this right now
       throw new Error('Lock acquisition failed - another worker processing');
     }
-    
+
     try {
       // 3. Double-check after acquiring lock (another worker might have finished)
       if (await wasAlreadyProcessed(idKey)) {
         await releaseProcessingLock(idKey);
         return { skipped: 'already_processed' };
       }
-      
+
       // 4. Do the actual work
       // Single source of truth: verify with provider
       const verifyResp: any = await paystack.verify(d.reference);
       const trxData = verifyResp.data;
 
-      // Upsert transaction (first-time insert keeps status/amount)
-      const trxDoc = await upsertTransaction(trxData);
-
       // Update order if present
       const order = await Order.findOne({ paystackReference: d.reference });
       console.log(`[PaymentWorker] Order lookup for reference ${d.reference}:`, order ? `Found order ${order._id}` : 'Order not found');
-      
+
+      // Save transaction with order reference (saves ALL transactions regardless of status)
+      await upsertTransaction(trxData, order?._id.toString());
+
       if (order) {
-        // Normalize status: Paystack uses 'success', our DB uses 'successful'
-        const normalizedStatus = trxData.status === 'success' ? 'successful' : trxData.status;
-        console.log(`[PaymentWorker] Processing payment status: ${normalizedStatus} for order ${order._id}`);
-        
-        if (normalizedStatus === 'successful') {
+        const paystackStatus = trxData.status;
+        console.log(`[PaymentWorker] Processing payment status: ${paystackStatus} for order ${order._id}`);
+
+        if (isSuccessStatus(paystackStatus)) {
           console.log(`[PaymentWorker] Marking order ${order._id} as successful`);
           await handleSuccess(order);
-        } else if (normalizedStatus === 'failed') {
-          console.log(`[PaymentWorker] Marking order ${order._id} as failed`);
-          await handleFailed(order, 'failed');
-        } else if (normalizedStatus === 'refunded') {
-          order.paymentStatus = 'Refunded';
+        } else if (isFailedStatus(paystackStatus)) {
+          console.log(`[PaymentWorker] Marking order ${order._id} as failed (${paystackStatus})`);
+          await handleFailed(order, paystackStatus);
+        } else if (isRefundedStatus(paystackStatus)) {
+          order.paymentStatus = paystackStatus;
           await order.save();
 
           const user = await User.findById(order.user);
@@ -284,17 +335,21 @@ export const { worker: paymentWorker } = makeWorker(
               }
             );
           }
+        } else {
+          // For pending/ongoing/queued or any other status, store as-is
+          order.paymentStatus = paystackStatus;
+          await order.save();
         }
       }
-      
+
       // 5. Mark as processed (durable marker)
       await markAsProcessed(idKey);
-      
+
       // 6. Release lock
       await releaseProcessingLock(idKey);
 
       return { processed: d.eventType };
-      
+
     } catch (error) {
       // On failure, release lock so retries can happen
       await releaseProcessingLock(idKey);
