@@ -83,8 +83,8 @@ const transactionSchema = new Schema<ITransaction>(
     paidAt: Date,
     customer: {
       id: { type: Number, required: true },
-      first_name: { type: String },
-      last_name: { type: String },
+      name: { type: String },
+      // last_name: { type: String },
       email: { type: String, required: true },
     },
     order: { type: Schema.Types.ObjectId, ref: 'Order' },
