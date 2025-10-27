@@ -91,7 +91,10 @@ const getProducts = asyncHandler(async (req: Request, res: Response) => {
 });
 
 const getProductById = asyncHandler(async (req: Request, res: Response) => {
-  const product = await Product.findById(req.params.id);
+  const product = await Product.findById(req.params.id)
+  .populate('category', 'name _id')  // ← Add this
+     .populate('brand', 'name _id logo')  // ← Add this
+    .lean();;
   if (product) {
     res.json(product);
   } else {
