@@ -7,6 +7,8 @@ import asyncHandler from 'express-async-handler';
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
+import { Category } from '../models/Category.js';
+import { Brand } from '../models/Brand.js';
 // import { User } from '../models/User.js'; // no longer needed for emailing admins directly
 // import { sendLowStockEmail } from '../utils/email.js'; // replaced with queued admin notifications
 import { createProductSchema, updateProductSchema } from '../validators/product.js';
@@ -23,9 +25,69 @@ import {
   enqueueAdminUserActivity, // summary activity for bulk ops
 } from '../queues/producers/adminNotificationProducers.js';
 
-const getProducts = asyncHandler(async (_req: Request, res: Response) => {
-  const products = await Product.find({}).populate({ path: 'brand', select: 'name _id' });
-  res.json(products);
+const getProducts = asyncHandler(async (req: Request, res: Response) => {
+  const { 
+    page = 1, 
+    limit = 12, 
+    category, 
+    brand, 
+    minPrice, 
+    maxPrice, 
+    inStock, 
+    sort 
+  } = req.query;
+
+  let query: any = { isActive: true };
+
+  // Category filter
+  if (category && category !== 'all') {
+    const categoryDoc = await Category.findOne({ name: category });
+    if (categoryDoc) {
+      query.category = categoryDoc._id;
+    }
+  }
+
+  // Brand filter
+  if (brand) {
+    const brandDoc = await Brand.findOne({ name: brand });
+    if (brandDoc) {
+      query.brand = brandDoc._id;
+    }
+  }
+
+  // Price range filter
+  if (minPrice || maxPrice) {
+    query.price = {};
+    if (minPrice) query.price.$gte = Number(minPrice);
+    if (maxPrice) query.price.$lte = Number(maxPrice);
+  }
+
+  // Stock filter
+  if (inStock === 'true') {
+    query.stock = { $gt: 0 };
+  }
+
+  // Sorting
+  const sortOption: Record<string, 1 | -1> = {};
+  if (sort === 'price-asc') sortOption.price = 1;
+  else if (sort === 'price-desc') sortOption.price = -1;
+  else sortOption.createdAt = -1; // default sort by newest
+
+  const products = await Product.find(query)
+    .populate({ path: 'category', select: 'name _id' })
+    .populate({ path: 'brand', select: 'name _id' })
+    .sort(sortOption)
+    .limit(Number(limit))
+    .skip((Number(page) - 1) * Number(limit));
+
+  const count = await Product.countDocuments(query);
+
+  res.json({
+    products,
+    totalPages: Math.ceil(count / Number(limit)),
+    currentPage: Number(page),
+    total: count
+  });
 });
 
 const getProductById = asyncHandler(async (req: Request, res: Response) => {
