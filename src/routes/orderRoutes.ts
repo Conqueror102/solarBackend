@@ -13,10 +13,10 @@ router.route('/')
 router.route('/myorders').get(protect, getMyOrders);
 
 
-router.route('/:id')
-    .get(protect, getOrderById)
-    .put(protect, requireRoles(['admin', 'superadmin']), updateOrder)
-    .delete(protect, requireRoles(['admin', 'superadmin']), deleteOrder);
+    router.route('/:id')
+        .get(protect, getOrderById)
+        .put(protect, requireRoles(['admin', 'superadmin']), updateOrder)
+        .delete(protect, requireRoles(['admin', 'superadmin']), deleteOrder);
 
 router.route('/:id/cancel').patch(protect, cancelOrder);
 
