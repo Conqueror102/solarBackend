@@ -33,6 +33,7 @@ import { rawBodyParser } from "./controllers/payments.controller.js";
 import paymentsRouter from "./routes/payments.routes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import brandRoutes from "./routes/brandRoutes.js";
+import contactRoutes from "./routes/contactRoutes.js";
 import { checkRedisConnectivity } from "./infra/redisHealth.js";
 import { bullBoardRouter } from "./infra/bullBoard.js";
 import { ensureRedisConnected } from "./config/redis.js";
@@ -155,6 +156,7 @@ app.use("/api/cart", cartRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/contact", contactRoutes);
 
 app.use("/api/paystack", paymentsRouter);
 
