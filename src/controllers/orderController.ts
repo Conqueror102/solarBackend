@@ -199,34 +199,39 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
     res.status(404);
     throw new Error("Order not found");
   }
-  if ((req as any).user.isAdmin || order.user._id.equals((req as any).user._id)) {
-    res.json({
-      id: order._id,
-      shortCode: "#" + order._id.toString().slice(-5),
-      customer: order.user,
-      date: order.get("createdAt"),
-      status: order.status,
-      total: order.totalAmount,
-      paymentMethod: order.paymentMethod,
-      isPaid: order.isPaid,
-      paidAt: order.paidAt,
-      paymentStatus: order.paymentStatus,
-      shippingAddress: order.shippingAddress,
-      billingAddress: order.billingAddress,
-      orderItems: order.orderItems.map((item: any) => ({
-        product: {
-          id: item.product._id,
-          name: item.product.name,
-          image: item.product.image,
-          price: item.product.price,
-        },
-        qty: item.qty,
-        price: item.price,
-      })),
-    });
+  // Check if user is admin/superadmin OR owns the order
+  const isAdmin = ['admin', 'superadmin'].includes((req as any).user.role);
+  const isOwner = order.user._id.equals((req as any).user._id);
+
+  if (!isAdmin && !isOwner) {
+    res.status(403);
+    throw new Error("Not authorized");
   }
-  res.status(403);
-  throw new Error("Not authorized");
+
+  res.json({
+    id: order._id,
+    shortCode: "#" + order._id.toString().slice(-5),
+    customer: order.user,
+    date: order.get("createdAt"),
+    status: order.status,
+    total: order.totalAmount,
+    paymentMethod: order.paymentMethod,
+    isPaid: order.isPaid,
+    paidAt: order.paidAt,
+    paymentStatus: order.paymentStatus,
+    shippingAddress: order.shippingAddress,
+    billingAddress: order.billingAddress,
+    orderItems: order.orderItems.map((item: any) => ({
+      product: {
+        id: item.product._id,
+        name: item.product.name,
+        image: item.product.image,
+        price: item.product.price,
+      },
+      qty: item.qty,
+      price: item.price,
+    })),
+  });
 });
 
 export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
